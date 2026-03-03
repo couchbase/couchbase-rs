@@ -1,11 +1,16 @@
-name: Publish crate
+name: Publish crates
 on:
   push:
     tags:
       - v*
 
 jobs:
-  publish:
+  tests:
+    uses: ./.github/workflows/tests.yml
+    secrets: inherit
+
+  dry-run:
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -13,10 +18,26 @@ jobs:
       - name: Setup Rust toolchain and cache
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Publish
+      - name: Install cargo-release
+        run: cargo install cargo-release
+
+      - name: Dry run
+        run: cargo release --workspace
+
+  publish:
+    needs: dry-run
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Rust toolchain and cache
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install cargo-release
+        run: cargo install cargo-release
+
+      - name: Publish crates
         env:
-          CARGO_REGISTRY_TOKEN: ${{secrets.CARGO_REGISTRY_TOKEN}}
-        run: |
-          cargo publish -p couchbase-connstr
-          cargo publish -p couchbase-core
-          cargo publish -p couchbase
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo release --workspace --no-confirm --execute

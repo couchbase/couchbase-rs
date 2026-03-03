@@ -2,11 +2,10 @@ name: Run Tests
 
 on:
   push:
-    tags:
-      - v*
     branches:
       - main
   pull_request:
+  workflow_call:
   schedule:
     - cron: "0 5 * * *"  # daily at 05:00 UTC
 
