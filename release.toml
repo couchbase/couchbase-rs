@@ -1,0 +1,20 @@
+# cargo-release configuration
+# Run: cargo release --workspace --no-confirm --execute
+# Publishes crates in dependency order, skipping already-published versions.
+
+# Don't publish protostellar to crates.io
+[[packages]]
+name = "protostellar"
+release = false
+
+[workspace]
+# Only publish — no version bumping, commits, tags, or pushes
+publish = true
+push = false
+tag = false
+commit = false
+# Allow running from any branch / detached HEAD (e.g. CI on a tag)
+allow-branch = ["main"]
+
+
+
