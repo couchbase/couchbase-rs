@@ -144,7 +144,6 @@ struct ClientThreadOptions<K: KvClient> {
 
     fast_client: Arc<ArcSwap<StdKvClientBabysitterClientState<K>>>,
     slow_state: Arc<Mutex<StdKvClientBabysitterState<K>>>,
-
     shutdown_token: CancellationToken,
     tracing: Arc<TracingComponent>,
 }
@@ -409,7 +408,6 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
 
                         let mut guard = state.lock().unwrap();
 
-                        guard.is_building = false;
                         guard.current_state = ConnectionState::Disconnected;
                         guard.connect_err = Some(ConnectionError {
                             connect_error: e,
