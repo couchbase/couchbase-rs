@@ -213,7 +213,8 @@ pub struct RetryRequest {
     /// The number of retry attempts that have already been made.
     pub retry_attempts: u32,
     /// The set of reasons this request has been retried so far.
-    pub retry_reasons: HashSet<RetryReason>,
+    /// `None` until the first retry attempt occurs.
+    pub retry_reasons: Option<HashSet<RetryReason>>,
     pub(crate) unique_id: Option<String>,
 }
 
@@ -223,7 +224,7 @@ impl RetryRequest {
             operation,
             is_idempotent,
             retry_attempts: 0,
-            retry_reasons: Default::default(),
+            retry_reasons: None,
             unique_id: None,
         }
     }
@@ -231,7 +232,9 @@ impl RetryRequest {
     pub(crate) fn add_retry_attempt(&mut self, reason: RetryReason) {
         self.retry_attempts += 1;
         tracing::Span::current().record(SPAN_ATTRIB_RETRIES, self.retry_attempts);
-        self.retry_reasons.insert(reason);
+        self.retry_reasons
+            .get_or_insert_with(HashSet::new)
+            .insert(reason);
     }
 
     pub fn is_idempotent(&self) -> bool {
@@ -242,8 +245,8 @@ impl RetryRequest {
         self.retry_attempts
     }
 
-    pub fn retry_reasons(&self) -> &HashSet<RetryReason> {
-        &self.retry_reasons
+    pub fn retry_reasons(&self) -> Option<&HashSet<RetryReason>> {
+        self.retry_reasons.as_ref()
     }
 }
 
@@ -253,14 +256,16 @@ impl Display for RetryRequest {
             f,
             "{{ operation: {}, id: {}, is_idempotent: {}, retry_attempts: {}, retry_reasons: {} }}",
             self.operation,
-            self.unique_id.as_ref().unwrap_or(&"".to_string()),
+            self.unique_id.as_deref().unwrap_or(""),
             self.is_idempotent,
             self.retry_attempts,
-            self.retry_reasons
-                .iter()
-                .map(|r| r.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
+            self.retry_reasons()
+                .map(|reasons| reasons
+                    .iter()
+                    .map(|r| r.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "))
+                .unwrap_or_default()
         )
     }
 }
