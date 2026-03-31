@@ -92,6 +92,7 @@ macro_rules! record_operation_metric_event {
                     histogram.db.client.operation.duration = $duration,
                     otel.unit = "s",
                     db.operation.name = $operation,
+                    db.system.name = SPAN_ATTRIB_DB_SYSTEM_VALUE,
                     $( $($field).+ = $value, )*
                     couchbase.cluster.name = name,
                     couchbase.cluster.uuid = uuid,
@@ -103,6 +104,7 @@ macro_rules! record_operation_metric_event {
                     histogram.db.client.operation.duration = $duration,
                     otel.unit = "s",
                     db.operation.name = $operation,
+                    db.system.name = SPAN_ATTRIB_DB_SYSTEM_VALUE,
                     $( $($field).+ = $value, )*
                     couchbase.cluster.name = name,
                     error.type = error,
@@ -113,6 +115,7 @@ macro_rules! record_operation_metric_event {
                     histogram.db.client.operation.duration = $duration,
                     otel.unit = "s",
                     db.operation.name = $operation,
+                    db.system.name = SPAN_ATTRIB_DB_SYSTEM_VALUE,
                     $( $($field).+ = $value, )*
                     couchbase.cluster.uuid = uuid,
                     error.type = error,
@@ -123,6 +126,7 @@ macro_rules! record_operation_metric_event {
                     histogram.db.client.operation.duration = $duration,
                     otel.unit = "s",
                     db.operation.name = $operation,
+                    db.system.name = SPAN_ATTRIB_DB_SYSTEM_VALUE,
                     $( $($field).+ = $value, )*
                     error.type = error,
                 ),
@@ -135,6 +139,7 @@ macro_rules! record_operation_metric_event {
                     histogram.db.client.operation.duration = $duration,
                     otel.unit = "s",
                     db.operation.name = $operation,
+                    db.system.name = SPAN_ATTRIB_DB_SYSTEM_VALUE,
                     $( $($field).+ = $value, )*
                     couchbase.cluster.name = name,
                     couchbase.cluster.uuid = uuid,
@@ -145,6 +150,7 @@ macro_rules! record_operation_metric_event {
                     histogram.db.client.operation.duration = $duration,
                     otel.unit = "s",
                     db.operation.name = $operation,
+                    db.system.name = SPAN_ATTRIB_DB_SYSTEM_VALUE,
                     $( $($field).+ = $value, )*
                     couchbase.cluster.name = name,
                 ),
@@ -154,6 +160,7 @@ macro_rules! record_operation_metric_event {
                     histogram.db.client.operation.duration = $duration,
                     otel.unit = "s",
                     db.operation.name = $operation,
+                    db.system.name = SPAN_ATTRIB_DB_SYSTEM_VALUE,
                     $( $($field).+ = $value, )*
                     couchbase.cluster.uuid = uuid,
                 ),
@@ -163,6 +170,7 @@ macro_rules! record_operation_metric_event {
                     histogram.db.client.operation.duration = $duration,
                     otel.unit = "s",
                     db.operation.name = $operation,
+                    db.system.name = SPAN_ATTRIB_DB_SYSTEM_VALUE,
                     $( $($field).+ = $value, )*
                 ),
             }
