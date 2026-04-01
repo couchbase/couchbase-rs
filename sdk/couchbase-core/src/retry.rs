@@ -72,6 +72,8 @@ pub enum RetryReason {
     QueryPreparedStatementFailure,
     /// The query index was not found (may still be building).
     QueryIndexNotFound,
+    /// The operation is retryable as indicated by the query engine.
+    QueryErrorRetryable,
     /// The search service is rejecting requests due to rate limiting.
     SearchTooManyRequests,
     /// An HTTP request failed to send.
@@ -102,6 +104,7 @@ impl RetryReason {
                 | RetryReason::KvSyncWriteRecommitInProgress
                 | RetryReason::QueryPreparedStatementFailure
                 | RetryReason::QueryIndexNotFound
+                | RetryReason::QueryErrorRetryable
                 | RetryReason::SearchTooManyRequests
                 | RetryReason::HttpSendRequestFailed
                 | RetryReason::HttpConnectFailed
@@ -141,6 +144,7 @@ impl Display for RetryReason {
                 write!(f, "QUERY_PREPARED_STATEMENT_FAILURE")
             }
             RetryReason::QueryIndexNotFound => write!(f, "QUERY_INDEX_NOT_FOUND"),
+            RetryReason::QueryErrorRetryable => write!(f, "QUERY_ERROR_RETRYABLE"),
             RetryReason::SearchTooManyRequests => write!(f, "SEARCH_TOO_MANY_REQUESTS"),
             RetryReason::NotReady => write!(f, "NOT_READY"),
             RetryReason::HttpSendRequestFailed => write!(f, "HTTP_SEND_REQUEST_FAILED"),
@@ -375,7 +379,11 @@ pub(crate) fn error_to_retry_reason(
                 queryx::error::ServerErrorKind::IndexNotFound => {
                     return Some(RetryReason::QueryIndexNotFound);
                 }
-                _ => {}
+                _ => {
+                    if e.retry() {
+                        return Some(RetryReason::QueryErrorRetryable);
+                    }
+                }
             },
             queryx::error::ErrorKind::Http { error, .. } => match error.kind() {
                 httpx::error::ErrorKind::SendRequest(_) => {
@@ -482,5 +490,81 @@ pub(crate) fn controlled_backoff(retry_attempts: u32) -> Duration {
         3 => Duration::from_millis(100),
         4 => Duration::from_millis(500),
         _ => Duration::from_millis(1000),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::queryx;
+    use http::StatusCode;
+
+    fn make_retry_manager() -> Arc<RetryManager> {
+        Arc::new(RetryManager::new(Arc::new(ErrMapComponent::default())))
+    }
+
+    fn make_query_server_error(kind: queryx::error::ServerErrorKind, retry: bool) -> Error {
+        let server_error = queryx::error::ServerError::new(
+            kind,
+            "localhost:8093",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            12345,
+            retry,
+            "test error",
+        );
+        queryx::error::Error::new_server_error(server_error).into()
+    }
+
+    #[test]
+    fn test_query_error_retryable_when_retry_true() {
+        let rs = make_retry_manager();
+        let mut retry_info = RetryRequest::new("query", false);
+        let err = make_query_server_error(queryx::error::ServerErrorKind::Unknown, true);
+
+        let reason = error_to_retry_reason(&rs, &mut retry_info, &err);
+        assert_eq!(reason, Some(RetryReason::QueryErrorRetryable));
+    }
+
+    #[test]
+    fn test_query_error_not_retryable_when_retry_false() {
+        let rs = make_retry_manager();
+        let mut retry_info = RetryRequest::new("query", false);
+        let err = make_query_server_error(queryx::error::ServerErrorKind::Unknown, false);
+
+        let reason = error_to_retry_reason(&rs, &mut retry_info, &err);
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn test_query_prepared_statement_failure_ignores_retry_flag() {
+        let rs = make_retry_manager();
+        let mut retry_info = RetryRequest::new("query", false);
+        let err = make_query_server_error(
+            queryx::error::ServerErrorKind::PreparedStatementFailure,
+            false,
+        );
+
+        let reason = error_to_retry_reason(&rs, &mut retry_info, &err);
+        assert_eq!(reason, Some(RetryReason::QueryPreparedStatementFailure));
+    }
+
+    #[test]
+    fn test_query_index_not_found_ignores_retry_flag() {
+        let rs = make_retry_manager();
+        let mut retry_info = RetryRequest::new("query", false);
+        let err = make_query_server_error(queryx::error::ServerErrorKind::IndexNotFound, false);
+
+        let reason = error_to_retry_reason(&rs, &mut retry_info, &err);
+        assert_eq!(reason, Some(RetryReason::QueryIndexNotFound));
+    }
+
+    #[test]
+    fn test_query_error_retryable_allows_non_idempotent_retry() {
+        assert!(RetryReason::QueryErrorRetryable.allows_non_idempotent_retry());
+    }
+
+    #[test]
+    fn test_query_error_retryable_does_not_always_retry() {
+        assert!(!RetryReason::QueryErrorRetryable.always_retry());
     }
 }
