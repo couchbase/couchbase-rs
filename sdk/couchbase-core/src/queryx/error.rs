@@ -219,6 +219,7 @@ pub struct ServerError {
     status_code: StatusCode,
     code: u32,
     msg: String,
+    retry: bool,
 
     statement: Option<String>,
     client_context_id: Option<String>,
@@ -232,6 +233,7 @@ impl ServerError {
         endpoint: impl Into<String>,
         status_code: StatusCode,
         code: u32,
+        retry: bool,
         msg: impl Into<String>,
     ) -> Self {
         Self {
@@ -240,6 +242,7 @@ impl ServerError {
             status_code,
             code,
             msg: msg.into(),
+            retry,
             statement: None,
             client_context_id: None,
             all_error_descs: vec![],
@@ -272,6 +275,10 @@ impl ServerError {
 
     pub fn msg(&self) -> &str {
         &self.msg
+    }
+
+    pub fn retry(&self) -> bool {
+        self.retry
     }
 
     pub fn all_error_descs(&self) -> &[ErrorDesc] {

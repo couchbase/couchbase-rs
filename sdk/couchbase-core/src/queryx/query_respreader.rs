@@ -354,6 +354,7 @@ impl QueryRespReader {
             endpoint,
             status_code,
             chosen_desc.code(),
+            chosen_desc.retry(),
             chosen_desc.message(),
         )
         .with_client_context_id(client_context_id)
