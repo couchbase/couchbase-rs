@@ -90,7 +90,7 @@ use tokio::io::AsyncReadExt;
 use tokio::net;
 use tokio::runtime::{Handle, Runtime};
 use tokio::sync::broadcast::{Receiver, Sender};
-use tokio::sync::{broadcast, mpsc, Mutex};
+use tokio::sync::{broadcast, mpsc, watch, Mutex};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout, timeout_at, Instant};
 
@@ -140,6 +140,8 @@ type AgentCollectionResolver = CollectionResolverCached<CollectionResolverMemd<A
 pub(crate) struct AgentInner {
     state: Arc<Mutex<AgentState>>,
     bucket: Option<String>,
+
+    pending_config_tx: watch::Sender<Option<ParsedConfig>>,
 
     cfg_manager: Arc<ConfigManagerMemd<AgentClientManager>>,
     conn_mgr: Arc<AgentClientManager>,
@@ -200,12 +202,16 @@ impl AgentInner {
                     .out_of_band_version(server_rev_id, server_rev_epoch, up.endpoint_id)
                     .await
                 {
-                    self.apply_config(config).await;
+                    self.enqueue_config(config);
                 }
             } else {
                 warn!("Received Set packet with no extras: {packet:?}");
             }
         }
+    }
+
+    fn enqueue_config(&self, config: ParsedConfig) {
+        self.pending_config_tx.send_replace(Some(config));
     }
 
     pub async fn apply_config(&self, config: ParsedConfig) {
@@ -343,7 +349,7 @@ impl ConfigUpdater for AgentInner {
         };
 
         if let Some(config) = self.cfg_manager.out_of_band_config(parsed_config) {
-            self.apply_config(config).await;
+            self.enqueue_config(config);
         };
     }
 }
@@ -568,9 +574,12 @@ impl Agent {
 
         let state = Arc::new(Mutex::new(state));
 
+        let (pending_config_tx, pending_config_rx) = watch::channel(None::<ParsedConfig>);
+
         let inner = Arc::new(AgentInner {
             state,
             bucket: bucket_name,
+            pending_config_tx,
             cfg_manager: cfg_manager.clone(),
             conn_mgr,
             vb_router,
@@ -603,6 +612,7 @@ impl Agent {
         nmvb_handler.set_watcher(Arc::downgrade(&inner)).await;
 
         Self::start_config_watcher(Arc::downgrade(&inner), cfg_manager);
+        Self::start_pending_config_consumer(Arc::downgrade(&inner), pending_config_rx);
 
         let agent = Agent {
             inner,
@@ -635,11 +645,11 @@ impl Agent {
                         let pc = {
                             // apply_config requires an owned ParsedConfig, as it takes ownership of it.
                             // Doing the clone within a block also means we can release the lock that
-                            // borrow_and_update() takes as soon as possible.
+                            // borrow_and_update() takes as soon as possible
                             watch_rx.borrow_and_update().clone()
                         };
                         if let Some(i) = inner.upgrade() {
-                            i.apply_config(pc).await;
+                            i.enqueue_config(pc);
                         } else {
                             debug!("Config watcher inner dropped, exiting");
                             return;
@@ -647,6 +657,33 @@ impl Agent {
                     }
                     Err(_e) => {
                         debug!("Config watcher channel closed");
+                        return;
+                    }
+                }
+            }
+        })
+    }
+
+    fn start_pending_config_consumer(
+        inner: Weak<AgentInner>,
+        mut pending_config_rx: watch::Receiver<Option<ParsedConfig>>,
+    ) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            loop {
+                match pending_config_rx.changed().await {
+                    Ok(_) => {
+                        let config = { pending_config_rx.borrow_and_update().clone() };
+                        if let Some(config) = config {
+                            if let Some(i) = inner.upgrade() {
+                                i.apply_config(config).await;
+                            } else {
+                                debug!("Pending config consumer inner dropped, exiting");
+                                return;
+                            }
+                        }
+                    }
+                    Err(_e) => {
+                        debug!("Pending config channel closed");
                         return;
                     }
                 }
