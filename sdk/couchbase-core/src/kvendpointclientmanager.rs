@@ -68,6 +68,7 @@ pub(crate) trait KvEndpointClientManager: Sized + Send + Sync {
 pub(crate) type KvEndpointClientManagerCloseHandler = Arc<dyn Fn(String) + Send + Sync>;
 
 pub(crate) struct KvEndpointClientManagerOptions {
+    pub id: String,
     pub on_close_handler: KvEndpointClientManagerCloseHandler,
 
     pub on_demand_connect: bool,
@@ -143,7 +144,7 @@ where
         };
 
         let mgr = StdKvEndpointClientManager {
-            id: Uuid::new_v4().to_string(),
+            id: opts.id,
             on_close_handler: opts.on_close_handler,
             on_demand_connect: opts.on_demand_connect,
             num_pool_connections: opts.num_pool_connections,
@@ -214,7 +215,10 @@ where
 
                 old_pool
             } else {
+                let pool_id = Uuid::new_v4().to_string();
+                info!("Kvclientmanager {} creating pool {}", self.id, &pool_id);
                 let pool = P::new(KvClientPoolOptions {
+                    id: pool_id,
                     on_demand_connect: self.on_demand_connect,
                     num_connections: self.num_pool_connections,
                     connect_throttle_period: self.connect_throttle_period,

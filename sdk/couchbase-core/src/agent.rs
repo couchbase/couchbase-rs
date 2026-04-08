@@ -437,7 +437,10 @@ impl Agent {
         } else {
             NetworkTypeHeuristic::identify(&state.latest_config, &cfg_source_host_port)
         };
-        info!("Identified network type: {network_type}");
+        info!(
+            "Agent {} identified network type: {network_type}",
+            &agent_id
+        );
         state.network_type = network_type;
 
         let agent_component_configs = AgentInner::gen_agent_component_configs_locked(&state);
@@ -452,8 +455,14 @@ impl Agent {
 
         let (unsolicited_packet_tx, mut unsolicited_packet_rx) = mpsc::unbounded_channel();
 
+        let conn_mgr_id = Uuid::new_v4().to_string();
+        info!(
+            "Agent {} creating kv endpoint client manager {}",
+            &agent_id, &conn_mgr_id
+        );
         let conn_mgr = Arc::new(
             StdKvEndpointClientManager::new(KvEndpointClientManagerOptions {
+                id: conn_mgr_id,
                 on_close_handler: Arc::new(|_manager_id| {}),
                 on_demand_connect: opts.kv_config.on_demand_connect,
                 num_pool_connections,
@@ -519,41 +528,59 @@ impl Agent {
             compression_manager,
         );
 
+        let mgmt_id = Uuid::new_v4().to_string();
+        info!("Agent {} creating mgmt component {}", &agent_id, &mgmt_id);
         let mgmt = MgmtComponent::new(
             retry_manager.clone(),
             http_client.clone(),
             tracing.clone(),
             agent_component_configs.mgmt_config,
             MgmtComponentOptions {
+                id: mgmt_id,
                 user_agent: user_agent.clone(),
             },
         );
 
+        let analytics_id = Uuid::new_v4().to_string();
+        info!(
+            "Agent {} creating analytics component {}",
+            &agent_id, &analytics_id
+        );
         let analytics = Arc::new(AnalyticsComponent::new(
             retry_manager.clone(),
             http_client.clone(),
             agent_component_configs.analytics_config,
             AnalyticsComponentOptions {
+                id: analytics_id,
                 user_agent: user_agent.clone(),
             },
         ));
 
+        let query_id = Uuid::new_v4().to_string();
+        info!("Agent {} creating query component {}", &agent_id, &query_id);
         let query = Arc::new(QueryComponent::new(
             retry_manager.clone(),
             http_client.clone(),
             tracing.clone(),
             agent_component_configs.query_config,
             QueryComponentOptions {
+                id: query_id,
                 user_agent: user_agent.clone(),
             },
         ));
 
+        let search_id = Uuid::new_v4().to_string();
+        info!(
+            "Agent {} creating search component {}",
+            &agent_id, &search_id
+        );
         let search = Arc::new(SearchComponent::new(
             retry_manager.clone(),
             http_client.clone(),
             tracing.clone(),
             agent_component_configs.search_config,
             SearchComponentOptions {
+                id: search_id,
                 user_agent: user_agent.clone(),
             },
         ));
