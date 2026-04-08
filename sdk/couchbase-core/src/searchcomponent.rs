@@ -52,8 +52,10 @@ use std::ops::Sub;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
+use tracing::debug;
 
 pub(crate) struct SearchComponent<C: Client> {
+    id: String,
     http_component: HttpComponent<C>,
     tracing: Arc<TracingComponent>,
 
@@ -76,6 +78,7 @@ pub(crate) struct SearchComponentConfig {
 
 #[derive(Debug)]
 pub(crate) struct SearchComponentOptions {
+    pub id: String,
     pub user_agent: String,
 }
 
@@ -88,6 +91,7 @@ impl<C: Client + 'static> SearchComponent<C> {
         opts: SearchComponentOptions,
     ) -> Self {
         Self {
+            id: opts.id,
             http_component: HttpComponent::new(
                 ServiceType::SEARCH,
                 opts.user_agent,
@@ -103,6 +107,12 @@ impl<C: Client + 'static> SearchComponent<C> {
     }
 
     pub fn reconfigure(&self, config: SearchComponentConfig) {
+        debug!(
+            "Search component {} updating endpoints to {:?}",
+            self.id,
+            &config.endpoints.keys().collect::<Vec<_>>()
+        );
+
         self.http_component.reconfigure(HttpComponentState::new(
             config.endpoints,
             config.authenticator,

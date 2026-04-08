@@ -49,8 +49,10 @@ use std::ops::Sub;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::select;
+use tracing::debug;
 
 pub(crate) struct QueryComponent<C: Client> {
+    id: String,
     http_component: HttpComponent<C>,
     tracing: Arc<TracingComponent>,
 
@@ -64,6 +66,7 @@ pub(crate) struct QueryComponentConfig {
 }
 
 pub(crate) struct QueryComponentOptions {
+    pub id: String,
     pub user_agent: String,
 }
 
@@ -76,6 +79,7 @@ impl<C: Client + 'static> QueryComponent<C> {
         opts: QueryComponentOptions,
     ) -> Self {
         Self {
+            id: opts.id,
             http_component: HttpComponent::new(
                 ServiceType::QUERY,
                 opts.user_agent,
@@ -89,6 +93,12 @@ impl<C: Client + 'static> QueryComponent<C> {
     }
 
     pub fn reconfigure(&self, config: QueryComponentConfig) {
+        debug!(
+            "Query component {} updating endpoints to {:?}",
+            self.id,
+            &config.endpoints.keys().collect::<Vec<_>>()
+        );
+
         self.http_component.reconfigure(HttpComponentState::new(
             config.endpoints,
             config.authenticator,

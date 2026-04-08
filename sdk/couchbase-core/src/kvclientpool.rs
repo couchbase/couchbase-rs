@@ -72,6 +72,7 @@ pub(crate) trait KvClientPool: Send + Sync {
 }
 
 pub(crate) struct KvClientPoolOptions {
+    pub id: String,
     pub num_connections: usize,
     pub connect_throttle_period: Duration,
     pub disable_decompression: bool,
@@ -134,10 +135,10 @@ where
     type Client = K;
 
     async fn new(opts: KvClientPoolOptions) -> Self {
-        let id = Uuid::new_v4().to_string();
+        let id = opts.id;
         info!(
-            "Creating new client pool {} for {} - {:?}",
-            &id, &opts.target.address, &opts.selected_bucket
+            "Creating new client pool {} for {}",
+            &id, &opts.target.address
         );
 
         let fast_map = Arc::new(ArcSwap::from_pointee(KvClientPoolFastMap {
@@ -152,8 +153,13 @@ where
         {
             let mut babysitters_guard = babysitters.lock().await;
             for idx in 0..opts.num_connections {
+                let babysitter_id = Uuid::new_v4().to_string();
+                info!(
+                    "Client pool {} creating babysitter {} (idx={})",
+                    &id, &babysitter_id, idx
+                );
                 let babysitter = KvClientBabysitter::new(KvClientBabysitterOptions {
-                    id: Uuid::new_v4().to_string(),
+                    id: babysitter_id,
                     endpoint_id: opts.endpoint_id.clone(),
                     on_demand_connect: opts.on_demand_connect,
 

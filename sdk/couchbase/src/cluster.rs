@@ -326,6 +326,8 @@ impl Cluster {
 
 impl Drop for Cluster {
     fn drop(&mut self) {
-        info!("Dropping Cluster");
+        if Arc::strong_count(&self.client) == 1 {
+            info!("Dropping Cluster");
+        }
     }
 }

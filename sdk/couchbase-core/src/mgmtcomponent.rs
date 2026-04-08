@@ -59,8 +59,10 @@ use serde_json::value::RawValue;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::debug;
 
 pub(crate) struct MgmtComponent<C: Client> {
+    id: String,
     http_component: HttpComponent<C>,
     tracing: Arc<TracingComponent>,
 
@@ -73,6 +75,7 @@ pub(crate) struct MgmtComponentConfig {
 }
 
 pub(crate) struct MgmtComponentOptions {
+    pub id: String,
     pub user_agent: String,
 }
 
@@ -85,6 +88,7 @@ impl<C: Client> MgmtComponent<C> {
         opts: MgmtComponentOptions,
     ) -> Self {
         Self {
+            id: opts.id,
             http_component: HttpComponent::new(
                 ServiceType::MGMT,
                 opts.user_agent,
@@ -97,6 +101,12 @@ impl<C: Client> MgmtComponent<C> {
     }
 
     pub fn reconfigure(&self, config: MgmtComponentConfig) {
+        debug!(
+            "Management component {} updating endpoints to {:?}",
+            self.id,
+            &config.endpoints.keys().collect::<Vec<_>>()
+        );
+
         self.http_component.reconfigure(HttpComponentState::new(
             config.endpoints,
             config.authenticator,

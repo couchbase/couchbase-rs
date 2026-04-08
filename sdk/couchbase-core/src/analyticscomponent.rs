@@ -30,8 +30,10 @@ use crate::retry::{orchestrate_retries, RetryManager, RetryRequest};
 use crate::service_type::ServiceType;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::debug;
 
 pub(crate) struct AnalyticsComponent<C: Client> {
+    id: String,
     http_component: HttpComponent<C>,
 
     retry_manager: Arc<RetryManager>,
@@ -43,6 +45,7 @@ pub(crate) struct AnalyticsComponentConfig {
 }
 
 pub(crate) struct AnalyticsComponentOptions {
+    pub id: String,
     pub user_agent: String,
 }
 
@@ -54,6 +57,7 @@ impl<C: Client + 'static> AnalyticsComponent<C> {
         opts: AnalyticsComponentOptions,
     ) -> Self {
         Self {
+            id: opts.id,
             http_component: HttpComponent::new(
                 ServiceType::ANALYTICS,
                 opts.user_agent,
@@ -65,6 +69,12 @@ impl<C: Client + 'static> AnalyticsComponent<C> {
     }
 
     pub fn reconfigure(&self, config: AnalyticsComponentConfig) {
+        debug!(
+            "Analytics component {} updating endpoints to {:?}",
+            self.id,
+            &config.endpoints.keys().collect::<Vec<_>>()
+        );
+
         self.http_component.reconfigure(HttpComponentState::new(
             config.endpoints,
             config.authenticator,

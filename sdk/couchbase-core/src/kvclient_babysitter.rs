@@ -275,6 +275,10 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                 };
 
                 let client_id = Uuid::new_v4().to_string();
+                info!(
+                    "Client babysitter {} creating kvclient {}",
+                    &client_opts.id, &client_id
+                );
                 let (on_close_tx, mut on_close_rx) = mpsc::channel(1);
 
                 let opts = {
@@ -465,7 +469,7 @@ impl<K: KvClient + KvClientOps + 'static> KvClientBabysitter for StdKvClientBaby
     fn new(opts: KvClientBabysitterOptions<K>) -> StdKvClientBabysitter<K> {
         let (on_client_connected_tx, _) = watch::channel(None);
         let babysitter = StdKvClientBabysitter {
-            id: opts.id,
+            id: opts.id.clone(),
             endpoint_id: opts.endpoint_id.clone(),
             on_demand_connect: opts.on_demand_connect,
             connect_throttle_period: opts.connect_throttle_period,
@@ -497,6 +501,11 @@ impl<K: KvClient + KvClientOps + 'static> KvClientBabysitter for StdKvClientBaby
         };
 
         if !opts.on_demand_connect {
+            debug!(
+                "Client babysitter {} starting to build new client",
+                &opts.id
+            );
+
             Self::maybe_begin_client(Arc::new(ClientThreadOptions {
                 id: babysitter.id.clone(),
                 endpoint_id: opts.endpoint_id,
@@ -551,10 +560,7 @@ impl<K: KvClient + KvClientOps + 'static> KvClientBabysitter for StdKvClientBaby
         }));
 
         if is_building {
-            debug!(
-                "Client babysitter {} starting to build new client",
-                &self.id
-            );
+            debug!("Client babysitter {} starting to rebuild client", &self.id);
         } else {
             debug!("Client babysitter {} already building client", &self.id);
         }
