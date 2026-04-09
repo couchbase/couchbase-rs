@@ -1,6 +1,6 @@
 [package]
 name = "couchbase-connstr"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "Couchbase SDK connection string parsing and DNS resolution, not intended for direct use"
 license = "Apache-2.0"

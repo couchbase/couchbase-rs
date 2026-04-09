@@ -1,6 +1,6 @@
 [package]
 name = "couchbase-core"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "Couchbase SDK core networking and protocol implementation, not intended for direct use"
 license = "Apache-2.0"
@@ -58,7 +58,7 @@ log = "0.4.29"
 serial_test = "3.4"
 tracing-subscriber = "0.3.22"
 
-couchbase-connstr = { path = "../couchbase-connstr", version = "1.0.0-beta.1" }
+couchbase-connstr = { path = "../couchbase-connstr", version = "1.0.1" }
 
 [features]
 dhat-heap = ["dhat"]
