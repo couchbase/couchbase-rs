@@ -80,3 +80,9 @@ Instead of committing directly to a maintenance branch, first commit to `main` a
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+## Releases
+
+Crates are published automatically via the publish workflow when a tag is pushed to the repository.
+At present all crates maintain the same version number, but in the future this may change.
+This means that crates are version bumped even if they have had no changes, this is a trade-off to avoid the complexity of managing separate versions for each crate.
