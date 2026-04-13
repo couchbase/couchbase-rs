@@ -34,6 +34,7 @@ use crate::results::projection::{build_from_full_doc, build_from_subdoc_entries}
 use crate::retry::RetryStrategy;
 use crate::subdoc::lookup_in_specs::{GetSpecOptions, LookupInSpec};
 use crate::subdoc::mutate_in_specs::MutateInSpec;
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use couchbase_core::memdx::subdoc::{reorder_subdoc_ops, MutateInOp, SubdocDocFlag};
 use std::sync::Arc;
@@ -44,7 +45,7 @@ const SECS_IN_DAY: u64 = 24 * 60 * 60;
 #[derive(Clone)]
 pub(crate) struct CouchbaseCoreKvClient {
     agent_provider: CouchbaseAgentProvider,
-    bucket_name: String,
+    bucket_name: Arc<str>,
     scope_name: String,
     collection_name: String,
 
@@ -61,7 +62,7 @@ impl CouchbaseCoreKvClient {
     ) -> Self {
         Self {
             agent_provider,
-            bucket_name,
+            bucket_name: Arc::from(bucket_name),
             scope_name,
             collection_name,
             default_retry_strategy,
@@ -344,15 +345,14 @@ impl CouchbaseCoreKvClient {
             }
         }
 
-        let mut content: Vec<u8>;
-        if full_lookup {
-            content = build_from_full_doc(&res, options.projections.as_deref())?;
+        let content = if full_lookup {
+            build_from_full_doc(&res, options.projections.as_deref())?
         } else {
-            content = build_from_subdoc_entries(&specs, &res.entries)?;
-        }
+            build_from_subdoc_entries(&specs, &res.entries)?
+        };
 
         Ok(GetResult {
-            content,
+            content: Bytes::from(content),
             flags,
             cas: res.cas,
             expiry_time: expires_at,
