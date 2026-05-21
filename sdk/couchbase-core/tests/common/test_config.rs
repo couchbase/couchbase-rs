@@ -24,7 +24,6 @@ use couchbase_core::address::Address;
 use couchbase_core::agent::Agent;
 use couchbase_core::options::waituntilready::WaitUntilReadyOptions;
 use envconfig::Envconfig;
-use lazy_static::lazy_static;
 use log::LevelFilter;
 use std::env;
 use std::future::Future;
@@ -38,10 +37,8 @@ use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
 use tokio::time::{timeout_at, Instant};
 
-lazy_static! {
-    pub static ref TEST_AGENT: RwLock<Option<TestAgent>> = RwLock::new(None);
-    pub static ref LOGGER_INITIATED: AtomicBool = AtomicBool::new(false);
-}
+pub static TEST_AGENT: LazyLock<RwLock<Option<TestAgent>>> = LazyLock::new(|| RwLock::new(None));
+pub static LOGGER_INITIATED: LazyLock<AtomicBool> = LazyLock::new(|| AtomicBool::new(false));
 
 #[derive(Debug, Clone, Envconfig)]
 pub struct EnvTestConfig {

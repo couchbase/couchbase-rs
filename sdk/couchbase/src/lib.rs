@@ -239,8 +239,9 @@
 //! | `default-tls` | ✅ | Alias for `rustls-tls` |
 //! | `rustls-tls` | ✅ | Use `rustls` for TLS (recommended) |
 //! | `native-tls` | ❌ | Use the platform's native TLS stack instead of `rustls` |
-//! | `unstable-dns-options` | ❌ | Enable DNS-SRV bootstrap configuration (volatile) |
-//! | `unstable-error-construction` | ❌ | Allow explicit `Error` construction (e.g. for mocking) |
+//! | `logging-meter` | ✅ | Enable [`LoggingMeter`](logging_meter::LoggingMeter) (pulls in `hdrhistogram` and `tracing-subscriber`) |
+//! | `threshold-logging-tracer` | ✅ | Enable [`ThresholdLoggingTracer`](threshold_logging_tracer::ThresholdLoggingTracer) (pulls in `tracing-subscriber`) |
+//! | `dns-srv` | ✅ | Enable DNS-SRV bootstrap via `hickory-resolver` |
 //!
 //! Note that the SDK does not typically use feature flags for API stability levels.
 //! Instead, unstable features are commented with **uncommitted** or **volatile**.
@@ -259,6 +260,7 @@ pub mod diagnostics;
 pub mod durability_level;
 pub mod error;
 mod error_context;
+#[cfg(feature = "logging-meter")]
 pub mod logging_meter;
 pub mod management;
 pub mod mutation_state;
@@ -269,6 +271,7 @@ pub mod scope;
 pub mod search;
 pub mod service_type;
 pub mod subdoc;
+#[cfg(feature = "threshold-logging-tracer")]
 pub mod threshold_logging_tracer;
 mod tracing;
 pub mod transcoding;

@@ -36,8 +36,12 @@ impl Error {
 #[non_exhaustive]
 pub enum ErrorKind {
     Parse(String),
-    InvalidArgument { msg: String, arg: String },
+    InvalidArgument {
+        msg: String,
+        arg: String,
+    },
     Io(io::Error),
+    #[cfg(feature = "dns-srv")]
     Resolve(hickory_resolver::ResolveError),
 }
 
@@ -50,6 +54,7 @@ impl Clone for ErrorKind {
                 arg: arg.clone(),
             },
             ErrorKind::Io(e) => Self::Io(io::Error::from(e.kind())),
+            #[cfg(feature = "dns-srv")]
             ErrorKind::Resolve(e) => Self::Resolve(e.clone()),
         }
     }
@@ -69,6 +74,7 @@ impl Display for ErrorKind {
                 write!(f, "Invalid argument: {msg} ({arg})")
             }
             ErrorKind::Io(e) => write!(f, "IO error: {e}"),
+            #[cfg(feature = "dns-srv")]
             ErrorKind::Resolve(e) => write!(f, "Resolve error: {e}"),
         }
     }
@@ -82,6 +88,7 @@ impl From<io::Error> for Error {
     }
 }
 
+#[cfg(feature = "dns-srv")]
 impl From<hickory_resolver::ResolveError> for Error {
     fn from(e: hickory_resolver::ResolveError) -> Self {
         Self {

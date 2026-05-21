@@ -18,24 +18,21 @@
 
 use std::collections::HashMap;
 use std::ops::Add;
+use std::sync::LazyLock;
 use std::time::Duration;
 
-use lazy_static::lazy_static;
-
-lazy_static! {
-    static ref UNIT_MAP: HashMap<&'static str, u64> = {
-        let mut m = HashMap::new();
-        m.insert("ns", 1);
-        m.insert("us", 1_000);
-        m.insert("µs", 1_000);
-        m.insert("μs", 1_000);
-        m.insert("ms", 1_000_000);
-        m.insert("s", 1_000_000_000);
-        m.insert("m", 60_000_000_000);
-        m.insert("h", 3_600_000_000_000);
-        m
-    };
-}
+static UNIT_MAP: LazyLock<HashMap<&'static str, u64>> = LazyLock::new(|| {
+    let mut m = HashMap::new();
+    m.insert("ns", 1);
+    m.insert("us", 1_000);
+    m.insert("µs", 1_000);
+    m.insert("μs", 1_000);
+    m.insert("ms", 1_000_000);
+    m.insert("s", 1_000_000_000);
+    m.insert("m", 60_000_000_000);
+    m.insert("h", 3_600_000_000_000);
+    m
+});
 
 // Note that this will not parse negative durations, rust Durations do not support negative values.
 pub fn parse_duration_from_golang_string(s: &str) -> Result<Duration, String> {

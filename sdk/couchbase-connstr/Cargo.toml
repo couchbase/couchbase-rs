@@ -14,10 +14,15 @@ authors = [
 
 [dependencies]
 form_urlencoded = "1.2"
-hickory-resolver = { version = "0.25.2", features = ["tokio", "system-config"], default-features = false }
+hickory-resolver = { version = "0.25.2", features = ["tokio", "system-config"], default-features = false, optional = true }
 regex = "1.12"
 tracing = { version = "0.1.44", features = ["log"] }
 url = "2.5"
 
 [dev-dependencies]
 tokio = { version = "1.50", features = ["rt", "net", "macros"] }
+
+[features]
+default = ["dns-srv"]
+dns-srv = ["dep:hickory-resolver"]
+
