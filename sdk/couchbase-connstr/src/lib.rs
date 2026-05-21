@@ -19,19 +19,17 @@
 pub mod error;
 
 use error::ErrorKind;
-use hickory_resolver::config::*;
-use hickory_resolver::name_server::TokioConnectionProvider;
-use hickory_resolver::proto::xfer::Protocol;
-use hickory_resolver::system_conf::read_system_conf;
-use hickory_resolver::TokioResolver;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::net::SocketAddr;
-use std::time::Duration;
-use tracing::debug;
 use url::form_urlencoded;
+#[cfg(feature = "dns-srv")]
+use {
+    hickory_resolver::config::*, hickory_resolver::name_server::TokioConnectionProvider,
+    hickory_resolver::proto::xfer::Protocol, hickory_resolver::system_conf::read_system_conf,
+    hickory_resolver::TokioResolver, std::net::SocketAddr, std::time::Duration, tracing::debug,
+};
 
 pub const DEFAULT_LEGACY_HTTP_PORT: u16 = 8091;
 pub const DEFAULT_LEGACY_HTTPS_PORT: u16 = 18091;
@@ -52,6 +50,7 @@ pub struct Address {
     pub port: u16,
 }
 
+#[cfg(feature = "dns-srv")]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DnsConfig {
     pub namespace: SocketAddr,
@@ -81,6 +80,7 @@ pub struct SrvRecord {
     pub host: String,
 }
 
+#[cfg(feature = "dns-srv")]
 impl ConnSpec {
     fn srv_record(&self) -> Option<SrvRecord> {
         if let Some(scheme_type) = &self.scheme {
@@ -222,6 +222,7 @@ pub struct ResolvedConnSpec {
     pub options: HashMap<String, Vec<String>>,
 }
 
+#[cfg(feature = "dns-srv")]
 pub async fn resolve(
     conn_spec: ConnSpec,
     dns_config: impl Into<Option<DnsConfig>>,
@@ -275,6 +276,40 @@ pub async fn resolve(
         };
     };
 
+    resolve_without_srv(conn_spec, default_port, has_explicit_scheme, use_ssl)
+}
+
+#[cfg(not(feature = "dns-srv"))]
+pub async fn resolve(conn_spec: ConnSpec) -> error::Result<ResolvedConnSpec> {
+    let (default_port, has_explicit_scheme, use_ssl) = if let Some(scheme) = &conn_spec.scheme {
+        match scheme.as_str() {
+            "couchbase" => (DEFAULT_MEMD_PORT, true, false),
+            "couchbases" => (DEFAULT_SSL_MEMD_PORT, true, true),
+            "couchbase2" => {
+                return handle_couchbase2_scheme(conn_spec);
+            }
+            "" => (DEFAULT_MEMD_PORT, false, false),
+            _ => {
+                return Err(ErrorKind::InvalidArgument {
+                    msg: "unrecognized scheme".to_string(),
+                    arg: "scheme".to_string(),
+                }
+                .into());
+            }
+        }
+    } else {
+        (DEFAULT_MEMD_PORT, false, false)
+    };
+
+    resolve_without_srv(conn_spec, default_port, has_explicit_scheme, use_ssl)
+}
+
+fn resolve_without_srv(
+    conn_spec: ConnSpec,
+    default_port: u16,
+    has_explicit_scheme: bool,
+    use_ssl: bool,
+) -> error::Result<ResolvedConnSpec> {
     if conn_spec.hosts.is_empty() {
         let (memd_port, http_port) = if use_ssl {
             (DEFAULT_SSL_MEMD_PORT, DEFAULT_LEGACY_HTTPS_PORT)
@@ -386,6 +421,7 @@ fn handle_couchbase2_scheme(conn_spec: ConnSpec) -> error::Result<ResolvedConnSp
     })
 }
 
+#[cfg(feature = "dns-srv")]
 async fn lookup_srv(
     scheme: &str,
     proto: &str,
@@ -431,6 +467,7 @@ async fn lookup_srv(
     Ok(addresses)
 }
 
+#[cfg(feature = "dns-srv")]
 fn host_is_ip_address(host: &str) -> bool {
     host.starts_with('[') || host.parse::<std::net::IpAddr>().is_ok()
 }
@@ -448,9 +485,22 @@ mod test {
     }
 
     async fn resolve_or_die(conn_spec: ConnSpec) -> ResolvedConnSpec {
-        resolve(conn_spec.clone(), None)
+        #[cfg(feature = "dns-srv")]
+        let result = resolve(conn_spec.clone(), None)
             .await
-            .unwrap_or_else(|e| panic!("Failed to resolve {conn_spec:?}: {e:?}"))
+            .unwrap_or_else(|e| panic!("Failed to resolve {conn_spec:?}: {e:?}"));
+        #[cfg(not(feature = "dns-srv"))]
+        let result = resolve(conn_spec.clone())
+            .await
+            .unwrap_or_else(|e| panic!("Failed to resolve {conn_spec:?}: {e:?}"));
+        result
+    }
+
+    async fn resolve_is_err(conn_spec: ConnSpec) -> bool {
+        #[cfg(feature = "dns-srv")]
+        return resolve(conn_spec, None).await.is_err();
+        #[cfg(not(feature = "dns-srv"))]
+        return resolve(conn_spec).await.is_err();
     }
 
     fn check_address_parsing(
@@ -667,14 +717,11 @@ mod test {
         .await;
 
         let cs = parse_or_die("1.2.3.4:8091");
-        assert!(
-            resolve(cs, None).await.is_err(),
-            "Expected error with http port"
-        );
+        assert!(resolve_is_err(cs).await, "Expected error with http port");
 
         let cs = parse_or_die("1.2.3.4:999");
         assert!(
-            resolve(cs, None).await.is_err(),
+            resolve_is_err(cs).await,
             "Expected error with non-default port without scheme"
         );
     }
@@ -755,7 +802,7 @@ mod test {
 
         let cs = parse_or_die("couchbase://foo.com:8091");
         assert!(
-            resolve(cs, None).await.is_err(),
+            resolve_is_err(cs).await,
             "Expected error for couchbase://XXX:8091"
         );
 

@@ -29,13 +29,10 @@ use couchbase::options::diagnostic_options::WaitUntilReadyOptions;
 use couchbase::service_type::ServiceType;
 use couchbase_connstr::ResolvedConnSpec;
 use envconfig::Envconfig;
-use lazy_static::lazy_static;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
 
-lazy_static! {
-    pub static ref TEST_CONFIG: RwLock<Option<TestCluster>> = RwLock::new(None);
-}
+pub static TEST_CONFIG: LazyLock<RwLock<Option<TestCluster>>> = LazyLock::new(|| RwLock::new(None));
 
 #[derive(Debug, Clone, Envconfig)]
 pub struct EnvTestConfig {

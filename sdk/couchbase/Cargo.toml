@@ -17,23 +17,22 @@ authors = [
 bytes = "1.11"
 chrono = "0.4.44"
 futures = "0.3.32"
-hdrhistogram = "7.5"
+hdrhistogram = { version = "7.5", optional = true }
 http = "1.4"
-lazy_static = "1.5"
 rustls-pki-types = { version = "1.14", optional = true }
 serde = "1.0"
 serde_json = { version = "1.0", features = ["preserve_order"] }
 uuid = { version = "1.22", features = ["v4"] }
 webpki-roots = "1.0"
 
-couchbase-connstr = { path = "../couchbase-connstr", version = "1.0.1" }
+couchbase-connstr = { path = "../couchbase-connstr", version = "1.0.1", default-features = false }
 couchbase-core = { path = "../couchbase-core", default-features = false, version = "1.0.1" }
 
 tokio = { version = "1.50" }
 tokio-native-tls = { version = "0.3.1", optional = true }
 tokio-rustls = { version = "0.26.4", optional = true }
 tracing = { version = "0.1.44", features = ["log"] }
-tracing-subscriber = "0.3.22"
+tracing-subscriber = { version = "0.3.22", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports", "async_tokio", "async"] }
@@ -46,10 +45,13 @@ tokio = "1.50"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
 [features]
-default = ["default-tls"]
+default = ["default-tls", "logging-meter", "threshold-logging-tracer", "dns-srv"]
 default-tls = ["rustls-tls"]
 rustls-tls = ["dep:tokio-rustls", "couchbase-core/rustls-tls", "dep:rustls-pki-types"]
 native-tls = ["dep:tokio-native-tls", "couchbase-core/native-tls"]
+logging-meter = ["dep:hdrhistogram", "dep:tracing-subscriber"]
+threshold-logging-tracer = ["dep:tracing-subscriber"]
+dns-srv = ["couchbase-connstr/dns-srv"]
 # Note that we do not use feature flags to indicate API stability level.
 # Instead, unstable features are marked with comments indicating uncommitted or volatile stability levels.
 

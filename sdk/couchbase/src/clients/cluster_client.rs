@@ -65,13 +65,16 @@ impl ClusterClient {
     ) -> error::Result<ClusterClient> {
         let conn_spec = parse(conn_str)?;
 
-        // This isn't ideal but dns options have to be a part of ClusterOptions, and we need to pull
-        // the dns options out for resolve.
-        // We could create a new type to pass into the backend connect functions but it just
-        // seems unnecessary.
-        let dns_options = take(&mut opts.dns_options).map(couchbase_connstr::DnsConfig::from);
-
-        let resolved_conn_spec = resolve(conn_spec, dns_options).await?;
+        // When the dns-srv feature is enabled, DnsOptions lives on ClusterOptions and must be
+        // extracted here before conn_spec is consumed by resolve. The field and setter are both
+        // gated behind dns-srv, so this block is compiled out when the feature is disabled.
+        #[cfg(feature = "dns-srv")]
+        let resolved_conn_spec = {
+            let dns_options = take(&mut opts.dns_options).map(couchbase_connstr::DnsConfig::from);
+            resolve(conn_spec, dns_options).await?
+        };
+        #[cfg(not(feature = "dns-srv"))]
+        let resolved_conn_spec = resolve(conn_spec).await?;
 
         let backend = if let Some(host) = resolved_conn_spec.couchbase2_host {
             ClusterClientBackend::Couchbase2ClusterBackend(
