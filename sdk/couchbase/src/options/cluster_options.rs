@@ -80,6 +80,7 @@ pub struct ClusterOptions {
     /// Configuration for the key-value (memcached) connections.
     pub kv_options: KvOptions,
     /// DNS configuration. **Volatile: This feature is subject to change at any time**.
+    #[cfg(feature = "dns-srv")]
     pub dns_options: Option<DnsOptions>,
     /// Configuration for the orphan response reporter.
     pub orphan_reporter_options: OrphanReporterOptions,
@@ -114,6 +115,7 @@ impl ClusterOptions {
             poller_options: PollerOptions::new(),
             http_options: HttpOptions::new(),
             kv_options: KvOptions::new(),
+            #[cfg(feature = "dns-srv")]
             dns_options: None,
             orphan_reporter_options: OrphanReporterOptions::new(),
             default_retry_strategy: None,
@@ -157,6 +159,7 @@ impl ClusterOptions {
     }
 
     /// Sets the DNS configuration. **Volatile: This feature is subject to change at any time**.
+    #[cfg(feature = "dns-srv")]
     pub fn dns_options(mut self, dns_options: DnsOptions) -> Self {
         self.dns_options = Some(dns_options);
         self
@@ -679,6 +682,7 @@ impl Display for TlsOptions {
 }
 
 /// Custom DNS resolver configuration.  **Volatile: This feature is subject to change at any time**.
+#[cfg(feature = "dns-srv")]
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct DnsOptions {
@@ -688,6 +692,7 @@ pub struct DnsOptions {
     pub timeout: Option<Duration>,
 }
 
+#[cfg(feature = "dns-srv")]
 impl DnsOptions {
     /// Creates a new `DnsOptions` with the given DNS server address.
     pub fn new(namespace: SocketAddr) -> Self {
@@ -703,6 +708,7 @@ impl DnsOptions {
         self
     }
 }
+#[cfg(feature = "dns-srv")]
 impl From<DnsOptions> for couchbase_connstr::DnsConfig {
     fn from(opts: DnsOptions) -> Self {
         couchbase_connstr::DnsConfig {

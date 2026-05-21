@@ -92,11 +92,11 @@ impl Decoder {
                         self.scan.incr_bytes(-1);
                         return Ok(scanp - self.scanp);
                     }
-                    ScanState::EndObject | ScanState::EndArray => {
-                        if self.scan.step(b' ') == ScanState::End {
-                            scanp += 1;
-                            return Ok(scanp - self.scanp);
-                        }
+                    ScanState::EndObject | ScanState::EndArray
+                        if self.scan.step(b' ') == ScanState::End =>
+                    {
+                        scanp += 1;
+                        return Ok(scanp - self.scanp);
                     }
                     ScanState::Error => {
                         let scan_err = self.scan.err().expect("scan state error but no error set");
@@ -246,10 +246,6 @@ impl Decoder {
         }
     }
 
-    fn input_offset(&self) -> usize {
-        self.scanned + self.scanp
-    }
-
     pub async fn token(&mut self) -> HttpxResult<Token> {
         loop {
             let c = match self.peek().await {
@@ -354,10 +350,10 @@ impl Decoder {
 
     fn token_error(&self, c: u8) -> HttpxResult<Token> {
         let context = match self.token_state {
-            TokenState::TopValue => " looking for beginning of value",
-            TokenState::ArrayStart | TokenState::ArrayValue | TokenState::ObjectValue => {
-                " looking for beginning of value"
-            }
+            TokenState::TopValue
+            | TokenState::ArrayStart
+            | TokenState::ArrayValue
+            | TokenState::ObjectValue => " looking for beginning of value",
             TokenState::ArrayComma => " after array element",
             TokenState::ObjectKey => " looking for beginning of object key string",
             TokenState::ObjectColon => " after object key",

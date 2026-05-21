@@ -19,17 +19,25 @@
 pub mod error;
 
 use error::ErrorKind;
+#[cfg(feature = "dns-srv")]
 use hickory_resolver::config::*;
+#[cfg(feature = "dns-srv")]
 use hickory_resolver::name_server::TokioConnectionProvider;
+#[cfg(feature = "dns-srv")]
 use hickory_resolver::proto::xfer::Protocol;
+#[cfg(feature = "dns-srv")]
 use hickory_resolver::system_conf::read_system_conf;
+#[cfg(feature = "dns-srv")]
 use hickory_resolver::TokioResolver;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::{Display, Formatter};
+#[cfg(feature = "dns-srv")]
 use std::net::SocketAddr;
+#[cfg(feature = "dns-srv")]
 use std::time::Duration;
+#[cfg(feature = "dns-srv")]
 use tracing::debug;
 use url::form_urlencoded;
 
@@ -52,6 +60,7 @@ pub struct Address {
     pub port: u16,
 }
 
+#[cfg(feature = "dns-srv")]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DnsConfig {
     pub namespace: SocketAddr,
@@ -81,6 +90,7 @@ pub struct SrvRecord {
     pub host: String,
 }
 
+#[cfg(feature = "dns-srv")]
 impl ConnSpec {
     fn srv_record(&self) -> Option<SrvRecord> {
         if let Some(scheme_type) = &self.scheme {
@@ -222,6 +232,7 @@ pub struct ResolvedConnSpec {
     pub options: HashMap<String, Vec<String>>,
 }
 
+#[cfg(feature = "dns-srv")]
 pub async fn resolve(
     conn_spec: ConnSpec,
     dns_config: impl Into<Option<DnsConfig>>,
@@ -275,6 +286,40 @@ pub async fn resolve(
         };
     };
 
+    resolve_without_srv(conn_spec, default_port, has_explicit_scheme, use_ssl)
+}
+
+#[cfg(not(feature = "dns-srv"))]
+pub async fn resolve(conn_spec: ConnSpec) -> error::Result<ResolvedConnSpec> {
+    let (default_port, has_explicit_scheme, use_ssl) = if let Some(scheme) = &conn_spec.scheme {
+        match scheme.as_str() {
+            "couchbase" => (DEFAULT_MEMD_PORT, true, false),
+            "couchbases" => (DEFAULT_SSL_MEMD_PORT, true, true),
+            "couchbase2" => {
+                return handle_couchbase2_scheme(conn_spec);
+            }
+            "" => (DEFAULT_MEMD_PORT, false, false),
+            _ => {
+                return Err(ErrorKind::InvalidArgument {
+                    msg: "unrecognized scheme".to_string(),
+                    arg: "scheme".to_string(),
+                }
+                .into());
+            }
+        }
+    } else {
+        (DEFAULT_MEMD_PORT, false, false)
+    };
+
+    resolve_without_srv(conn_spec, default_port, has_explicit_scheme, use_ssl)
+}
+
+fn resolve_without_srv(
+    conn_spec: ConnSpec,
+    default_port: u16,
+    has_explicit_scheme: bool,
+    use_ssl: bool,
+) -> error::Result<ResolvedConnSpec> {
     if conn_spec.hosts.is_empty() {
         let (memd_port, http_port) = if use_ssl {
             (DEFAULT_SSL_MEMD_PORT, DEFAULT_LEGACY_HTTPS_PORT)
@@ -386,6 +431,7 @@ fn handle_couchbase2_scheme(conn_spec: ConnSpec) -> error::Result<ResolvedConnSp
     })
 }
 
+#[cfg(feature = "dns-srv")]
 async fn lookup_srv(
     scheme: &str,
     proto: &str,
@@ -431,6 +477,7 @@ async fn lookup_srv(
     Ok(addresses)
 }
 
+#[cfg(feature = "dns-srv")]
 fn host_is_ip_address(host: &str) -> bool {
     host.starts_with('[') || host.parse::<std::net::IpAddr>().is_ok()
 }

@@ -69,9 +69,13 @@ impl ClusterClient {
         // the dns options out for resolve.
         // We could create a new type to pass into the backend connect functions but it just
         // seems unnecessary.
-        let dns_options = take(&mut opts.dns_options).map(couchbase_connstr::DnsConfig::from);
-
-        let resolved_conn_spec = resolve(conn_spec, dns_options).await?;
+        #[cfg(feature = "dns-srv")]
+        let resolved_conn_spec = {
+            let dns_options = take(&mut opts.dns_options).map(couchbase_connstr::DnsConfig::from);
+            resolve(conn_spec, dns_options).await?
+        };
+        #[cfg(not(feature = "dns-srv"))]
+        let resolved_conn_spec = resolve(conn_spec).await?;
 
         let backend = if let Some(host) = resolved_conn_spec.couchbase2_host {
             ClusterClientBackend::Couchbase2ClusterBackend(

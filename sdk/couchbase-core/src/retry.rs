@@ -19,7 +19,7 @@
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use crate::errmapcomponent::ErrMapComponent;
@@ -33,10 +33,8 @@ use async_trait::async_trait;
 use tokio::time::sleep;
 use tracing::{debug, info};
 
-lazy_static! {
-    pub(crate) static ref DEFAULT_RETRY_STRATEGY: Arc<dyn RetryStrategy> =
-        Arc::new(FailFastRetryStrategy::default());
-}
+pub(crate) static DEFAULT_RETRY_STRATEGY: LazyLock<Arc<dyn RetryStrategy>> =
+    LazyLock::new(|| Arc::new(FailFastRetryStrategy::default()));
 
 /// The reason an operation is being retried.
 ///
@@ -356,10 +354,8 @@ pub(crate) fn error_to_retry_reason(
             match err.kind() {
                 Server(e) => return server_error_to_retry_reason(rs, e),
                 Resource(e) => return server_error_to_retry_reason(rs, e.cause()),
-                Cancelled(e) => {
-                    if e == &CancellationErrorKind::ClosedInFlight {
-                        return Some(RetryReason::SocketClosedWhileInFlight);
-                    }
+                Cancelled(e) if e == &CancellationErrorKind::ClosedInFlight => {
+                    return Some(RetryReason::SocketClosedWhileInFlight);
                 }
                 Dispatch { .. } => return Some(RetryReason::SocketNotAvailable),
                 _ => {}
@@ -397,10 +393,8 @@ pub(crate) fn error_to_retry_reason(
             _ => {}
         },
         ErrorKind::Search(e) => match e.kind() {
-            searchx::error::ErrorKind::Server(e) => {
-                if e.status_code() == 429 {
-                    return Some(RetryReason::SearchTooManyRequests);
-                }
+            searchx::error::ErrorKind::Server(e) if e.status_code() == 429 => {
+                return Some(RetryReason::SearchTooManyRequests);
             }
             searchx::error::ErrorKind::Http { error, .. } => match error.kind() {
                 httpx::error::ErrorKind::SendRequest(_) => {
@@ -471,10 +465,8 @@ fn server_error_to_retry_reason(rs: &Arc<RetryManager>, e: &ServerError) -> Opti
         ServerErrorKind::SyncWriteRecommitInProgress => {
             return Some(RetryReason::KvSyncWriteRecommitInProgress);
         }
-        ServerErrorKind::UnknownStatus { status } => {
-            if rs.err_map_component.should_retry(status) {
-                return Some(RetryReason::KvErrorMapRetryIndicated);
-            }
+        ServerErrorKind::UnknownStatus { status } if rs.err_map_component.should_retry(status) => {
+            return Some(RetryReason::KvErrorMapRetryIndicated);
         }
         _ => {}
     }
