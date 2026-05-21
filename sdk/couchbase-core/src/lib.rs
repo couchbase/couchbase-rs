@@ -17,8 +17,6 @@
  */
 
 extern crate core;
-#[macro_use]
-extern crate lazy_static;
 
 pub mod address;
 pub mod agent;

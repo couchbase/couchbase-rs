@@ -1,0 +1,32 @@
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+name: Feature combinations check
+
+jobs:
+  cargo_hack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust toolchain and cache
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: Check all feature combinations (couchbase-connstr)
+        run: cargo hack check --feature-powerset --no-dev-deps -p couchbase-connstr
+      - name: Check all feature combinations (couchbase-core)
+        run: |
+          cargo hack check --feature-powerset --no-dev-deps \
+            --exclude-features dhat-heap \
+            --group-features rustls-tls,native-tls \
+            --at-least-one-of rustls-tls,native-tls \
+            -p couchbase-core
+      - name: Check all feature combinations (couchbase)
+        run: |
+          cargo hack check --feature-powerset --no-dev-deps \
+            --exclude-features internal \
+            --group-features rustls-tls,native-tls \
+            --at-least-one-of rustls-tls,native-tls \
+            -p couchbase

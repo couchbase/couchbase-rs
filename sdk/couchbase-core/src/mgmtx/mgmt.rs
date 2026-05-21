@@ -34,24 +34,22 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer};
 use serde_json::value::RawValue;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
-lazy_static! {
-    static ref FIELD_NAME_MAP: HashMap<String, String> = {
-        HashMap::from([
-            (
-                "durability_min_level".to_string(),
-                "DurabilityMinLevel".to_string(),
-            ),
-            ("ramquota".to_string(), "RamQuotaMB".to_string()),
-            ("replicanumber".to_string(), "ReplicaNumber".to_string()),
-            ("maxttl".to_string(), "MaxTTL".to_string()),
-            ("history".to_string(), "HistoryEnabled".to_string()),
-            ("numvbuckets".to_string(), "numVBuckets".to_string()),
-        ])
-    };
-}
+static FIELD_NAME_MAP: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+    HashMap::from([
+        (
+            "durability_min_level".to_string(),
+            "DurabilityMinLevel".to_string(),
+        ),
+        ("ramquota".to_string(), "RamQuotaMB".to_string()),
+        ("replicanumber".to_string(), "ReplicaNumber".to_string()),
+        ("maxttl".to_string(), "MaxTTL".to_string()),
+        ("history".to_string(), "HistoryEnabled".to_string()),
+        ("numvbuckets".to_string(), "numVBuckets".to_string()),
+    ])
+});
 
 #[derive(Debug)]
 pub struct Management<C: Client> {
