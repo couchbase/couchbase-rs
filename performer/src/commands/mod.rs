@@ -1,0 +1,15 @@
+pub mod authenticator;
+pub mod bucket_management;
+mod collection_management;
+pub mod execution;
+pub mod helpers;
+pub mod kv;
+pub mod kv_binary;
+pub mod mutations;
+pub mod query;
+mod query_index_management;
+pub mod sdk;
+pub mod search;
+mod search_index_management;
+mod subdoc;
+pub mod wait_until_ready;
