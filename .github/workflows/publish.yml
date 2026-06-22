@@ -17,7 +17,7 @@ jobs:
         run: cargo install cargo-release --version 1.1.1 --locked
 
       - name: Dry run
-        run: cargo release --workspace --no-confirm --exclude protostellar
+        run: cargo release --workspace --no-confirm --exclude protostellar --exclude fit-performer
 
   publish:
     needs: dry-run
@@ -40,4 +40,4 @@ jobs:
       - name: Publish crates
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo release --workspace --no-confirm --execute --exclude protostellar
+        run: cargo release --workspace --no-confirm --execute --exclude protostellar --exclude fit-performer

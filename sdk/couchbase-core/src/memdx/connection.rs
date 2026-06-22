@@ -46,6 +46,7 @@ pub trait Stream: Debug + AsyncWrite + AsyncRead + Send + Sync + Unpin + 'static
 impl Stream for TcpStream {}
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum ConnectionType {
     Tcp(TcpConnection),
     Tls(TlsConnection),
