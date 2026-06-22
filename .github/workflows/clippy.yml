@@ -21,4 +21,5 @@ jobs:
       - name: Run Clippy
         run: |
           cargo clippy --version
-          cargo clippy --all-targets --all-features
+          cargo clippy --workspace --all-targets --all-features --exclude fit-performer
+          cargo clippy -p fit-performer --all-targets
