@@ -126,13 +126,19 @@ impl HorizontalScaleRunner {
                     c.counter_id,
                     counter.get()
                 );
-                Ok(Bounds::new_counter(counter.clone()))
+                Ok(Bounds::new_counter(counter))
             }
             Some(shared::Bounds {
                 bounds: Some(bounds::Bounds::ForTime(f)),
             }) => {
                 let deadline = SystemTime::now().add(Duration::from_secs(f.seconds as u64));
                 Ok(Bounds::new_time(deadline))
+            }
+            Some(shared::Bounds {
+                bounds: Some(bounds::Bounds::CounterEq(c)),
+            }) => {
+                let counter = self.per.counters.get(c)?;
+                Ok(Bounds::new_counter_eq(counter))
             }
             _ => Err(Error::invalid_argument("Unknown bounds type specified")),
         }
