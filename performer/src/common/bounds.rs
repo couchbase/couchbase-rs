@@ -8,12 +8,17 @@ pub trait BoundsExecutor {
 
 pub enum Bounds {
     Counter(CounterBoundsExecutor),
+    CounterEq(CounterEqualsBoundsExecutor),
     Time(TimeBoundsExecutor),
 }
 
 impl Bounds {
     pub fn new_counter(counter: Arc<Counter>) -> Self {
         Bounds::Counter(CounterBoundsExecutor::new(counter))
+    }
+
+    pub fn new_counter_eq(counter: Arc<Counter>) -> Self {
+        Bounds::CounterEq(CounterEqualsBoundsExecutor::new(counter))
     }
 
     pub fn new_time(deadline: SystemTime) -> Self {
@@ -32,6 +37,25 @@ impl CounterBoundsExecutor {
 
     fn can_execute(&self) -> bool {
         self.counter.get_and_decrement() >= 0
+    }
+}
+
+pub struct CounterEqualsBoundsExecutor {
+    counter: Arc<Counter>,
+    initial_counter_value: i32,
+}
+
+impl CounterEqualsBoundsExecutor {
+    pub fn new(counter: Arc<Counter>) -> Self {
+        let initial_counter_value = counter.get();
+        Self {
+            counter,
+            initial_counter_value,
+        }
+    }
+
+    fn can_execute(&self) -> bool {
+        self.counter.get() == self.initial_counter_value
     }
 }
 
@@ -54,6 +78,7 @@ impl BoundsExecutor for Bounds {
         match self {
             Bounds::Counter(executor) => executor.can_execute(),
             Bounds::Time(executor) => executor.can_execute(),
+            Bounds::CounterEq(executor) => executor.can_execute(),
         }
     }
 }
