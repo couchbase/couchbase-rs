@@ -52,6 +52,7 @@ pub struct Performer {
     state: Mutex<PerformerState>,
     stream_owner: Arc<StreamOwner>,
     span_owner: Arc<SpanOwner>,
+    counters: Arc<Counters>,
 }
 
 #[derive(Default)]
@@ -346,7 +347,7 @@ impl PerformerService for Performer {
 
         let config = req_ref.config.as_ref();
 
-        let counters = Arc::new(Counters::new());
+        let counters = self.counters.clone();
         let run_id = Uuid::new_v4().to_string();
         let executor = Arc::new(Executor::new(
             conn_set,
@@ -481,16 +482,25 @@ impl PerformerService for Performer {
 
     async fn set_counter(
         &self,
-        _request: Request<Counter>,
+        request: Request<Counter>,
     ) -> Result<Response<SetCounterResponse>, Status> {
-        unimplemented!()
+        let req_ref = request.get_ref();
+        info!("set_counter called with id {}", req_ref.counter_id);
+
+        self.counters.set(req_ref).map_err(|e| e.status())?;
+
+        Ok(Response::new(SetCounterResponse {}))
     }
 
     async fn clear_all_counters(
         &self,
         _request: Request<ClearAllCountersRequest>,
     ) -> Result<Response<ClearAllCountersResponse>, Status> {
-        unimplemented!()
+        info!("clear_all_counters called");
+
+        self.counters.clear();
+
+        Ok(Response::new(ClearAllCountersResponse {}))
     }
 
     async fn span_create(
