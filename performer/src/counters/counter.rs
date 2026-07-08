@@ -28,17 +28,12 @@ impl Counter {
     }
 }
 
+#[derive(Default)]
 pub struct Counters {
     counters: Mutex<HashMap<String, Arc<Counter>>>,
 }
 
 impl Counters {
-    pub fn new() -> Self {
-        Self {
-            counters: Mutex::new(HashMap::new()),
-        }
-    }
-
     pub fn get(&self, shared_counter: &shared::Counter) -> Result<Arc<Counter>> {
         let global = match &shared_counter.counter {
             Some(shared::counter::Counter::Global(global)) => global,
@@ -56,5 +51,29 @@ impl Counters {
         map.insert(shared_counter.counter_id.clone(), counter.clone());
 
         Ok(counter)
+    }
+
+    pub fn set(&self, shared_counter: &shared::Counter) -> Result<()> {
+        let global = match &shared_counter.counter {
+            Some(shared::counter::Counter::Global(global)) => global,
+            _ => return Err(Error::invalid_argument("Unknown bounds type")),
+        };
+
+        let mut map = self.counters.lock().unwrap();
+
+        let init_value = global.count;
+        if let Some(existing) = map.get(&shared_counter.counter_id) {
+            existing.count.store(init_value, Ordering::SeqCst);
+        } else {
+            let counter = Arc::new(Counter::new(init_value));
+            map.insert(shared_counter.counter_id.clone(), counter);
+        }
+
+        Ok(())
+    }
+
+    pub fn clear(&self) {
+        let mut map = self.counters.lock().unwrap();
+        map.clear()
     }
 }
