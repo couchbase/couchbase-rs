@@ -130,7 +130,7 @@ impl<
                         key: opts.key,
                         vbucket_id,
                         flags: opts.flags,
-                        value,
+                        value: &value,
                         datatype,
                         expiry: opts.expiry,
                         preserve_expiry: opts.preserve_expiry,
@@ -195,7 +195,7 @@ impl<
                         Error::new_contextual_memdx_error(e)
                     })
                     .map_ok(|resp| GetResult {
-                        value: resp.value.to_vec(),
+                        value: resp.value,
                         datatype: resp.datatype,
                         cas: resp.cas,
                         flags: resp.flags,
@@ -233,7 +233,7 @@ impl<
                         Error::new_contextual_memdx_error(e)
                     })
                     .map_ok(|resp| GetMetaResult {
-                        value: resp.value.to_vec(),
+                        value: resp.value,
                         datatype: resp.datatype,
                         server_duration: resp.server_duration,
                         expiry: resp.expiry,
@@ -323,7 +323,7 @@ impl<
                         Error::new_contextual_memdx_error(e)
                     })
                     .map_ok(|resp| GetAndLockResult {
-                        value: resp.value.to_vec(),
+                        value: resp.value,
                         datatype: resp.datatype,
                         cas: resp.cas,
                         flags: resp.flags,
@@ -362,7 +362,7 @@ impl<
                         Error::new_contextual_memdx_error(e)
                     })
                     .map_ok(|resp| GetAndTouchResult {
-                        value: resp.value.to_vec(),
+                        value: resp.value,
                         datatype: resp.datatype,
                         cas: resp.cas,
                         flags: resp.flags,
@@ -469,7 +469,7 @@ impl<
                         key: opts.key,
                         vbucket_id,
                         flags: opts.flags,
-                        value,
+                        value: &value,
                         datatype,
                         expiry: opts.expiry,
                         on_behalf_of: None,
@@ -531,7 +531,7 @@ impl<
                         key: opts.key,
                         vbucket_id,
                         flags: opts.flags,
-                        value,
+                        value: &value,
                         datatype,
                         expiry: opts.expiry,
                         preserve_expiry: opts.preserve_expiry,
@@ -594,7 +594,7 @@ impl<
                         collection_id,
                         key: opts.key,
                         vbucket_id,
-                        value,
+                        value: &value,
                         datatype,
                         cas: opts.cas,
                         on_behalf_of: None,
@@ -655,7 +655,7 @@ impl<
                         collection_id,
                         key: opts.key,
                         vbucket_id,
-                        value,
+                        value: &value,
                         datatype,
                         cas: opts.cas,
                         on_behalf_of: None,
