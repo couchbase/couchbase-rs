@@ -238,7 +238,7 @@ impl Client for ReqwestClient {
             Err(err) => {
                 let mut msg = format!(
                     "Received error on {}. Request id={}. Err: {}",
-                    &self.client_id, &id, &err,
+                    self.client_id, id, err,
                 );
 
                 if let Some(source) = err.source() {

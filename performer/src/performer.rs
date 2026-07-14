@@ -337,7 +337,7 @@ impl PerformerService for Performer {
                 .ok_or_else(|| {
                     Status::not_found(format!(
                         "No connection with ID={}",
-                        &workloads.cluster_connection_id
+                        workloads.cluster_connection_id
                     ))
                 })?
                 .clone()

@@ -125,7 +125,7 @@ impl<C: Client> Search<C> {
                 ));
             }
         } else {
-            format!("api/index/{}/query", &opts.index_name)
+            format!("api/index/{}/query", opts.index_name)
         };
 
         let on_behalf_of = opts.on_behalf_of.clone();
@@ -578,7 +578,7 @@ impl<C: Client> Search<C> {
             if let Some(scope) = &scope_name {
                 Ok(format!(
                     "api/bucket/{}/scope/{}/index/{}",
-                    bucket, scope, &index_name
+                    bucket, scope, index_name
                 ))
             } else {
                 Err(error::Error::new_invalid_argument_error(
@@ -587,7 +587,7 @@ impl<C: Client> Search<C> {
                 ))
             }
         } else {
-            Ok(format!("api/index/{}", &index_name))
+            Ok(format!("api/index/{}", index_name))
         }
     }
 }
