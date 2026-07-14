@@ -95,7 +95,7 @@ pub async fn import_sample_beer_dataset(
     let docs = load_sample_beer_dataset(for_service);
     let mut results = HashMap::new();
     for doc in docs.into_iter() {
-        let key = format!("{}-{}", &doc.service, &doc.name);
+        let key = format!("{}-{}", doc.service, doc.name);
         let result = collection.upsert(&key, &doc, None).await.unwrap();
         results.insert(
             key,

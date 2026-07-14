@@ -86,7 +86,7 @@ impl<C: Client> PreparedQuery<C> {
             }
         };
 
-        opts.statement = Some(format!("PREPARE {}", &statement));
+        opts.statement = Some(format!("PREPARE {}", statement));
         opts.auto_execute = Some(true);
 
         let res = self.executor.query(&opts).await?;

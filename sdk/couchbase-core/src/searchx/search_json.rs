@@ -94,10 +94,10 @@ impl TryFrom<DateFacet> for DateRangeFacetResult {
         Ok(DateRangeFacetResult {
             name: value.name,
             start: DateTime::parse_from_rfc3339(&value.start).map_err(|e| {
-                error::Error::new_message_error(format!("failed to parse date: {}", &e), None)
+                error::Error::new_message_error(format!("failed to parse date: {}", e), None)
             })?,
             end: DateTime::parse_from_rfc3339(&value.end).map_err(|e| {
-                error::Error::new_message_error(format!("failed to parse date: {}", &e), None)
+                error::Error::new_message_error(format!("failed to parse date: {}", e), None)
             })?,
             count: value.count,
         })

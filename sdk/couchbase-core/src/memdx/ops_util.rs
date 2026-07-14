@@ -37,7 +37,7 @@ impl OpsUtil {
     where
         D: Dispatcher,
     {
-        let full_name = format!("{}.{}", &request.scope_name, &request.collection_name);
+        let full_name = format!("{}.{}", request.scope_name, request.collection_name);
 
         let op = dispatcher
             .dispatch(
