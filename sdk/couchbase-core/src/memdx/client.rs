@@ -87,6 +87,7 @@ struct ReadLoopOptions {
     pub disable_decompression: bool,
     pub local_addr: SocketAddr,
     pub peer_addr: SocketAddr,
+    pub closed: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
@@ -113,7 +114,7 @@ pub struct Client {
     local_addr: SocketAddr,
     peer_addr: SocketAddr,
 
-    closed: AtomicBool,
+    closed: Arc<AtomicBool>,
 }
 
 impl Client {
@@ -152,13 +153,16 @@ impl Client {
         stream: FramedRead<ReadHalf<Box<dyn Stream>>, KeyValueCodec>,
         opaque_map: Arc<std::sync::Mutex<OpaqueMap>>,
         on_read_loop_close: OnReadLoopCloseHandler,
+        graceful: bool,
     ) {
         drop(stream);
 
         Self::drain_opaque_map(opaque_map).await;
 
-        if on_read_loop_close.send(()).is_err() {
-            error!("{} failed to notify read loop closure", &client_id);
+        // If the client is being shut down, the receiver may have already been dropped
+        // (e.g. the owning kvclient is tearing down too), which is expected and not an error.
+        if on_read_loop_close.send(()).is_err() && !graceful {
+            warn!("{} failed to notify read loop closure", &client_id);
         }
 
         debug!("{client_id} read loop shut down");
@@ -172,7 +176,7 @@ impl Client {
         loop {
             select! {
                 (_) = opts.on_close_cancel.cancelled() => {
-                    Self::on_read_loop_close(&opts.client_id, stream, opaque_map, opts.on_read_close_handler).await;
+                    Self::on_read_loop_close(&opts.client_id, stream, opaque_map, opts.on_read_close_handler, true).await;
                     return;
                 },
                 (next) = stream.next() => {
@@ -246,7 +250,8 @@ impl Client {
                                             Ok(_) => {}
                                             Err(e) => {
                                                 debug!("Sending response to caller failed: {e}");
-                                                Self::on_read_loop_close(&opts.client_id, stream, opaque_map, opts.on_read_close_handler).await;
+                                                let graceful = opts.closed.load(Ordering::SeqCst) || opts.on_close_cancel.is_cancelled();
+                                                Self::on_read_loop_close(&opts.client_id, stream, opaque_map, opts.on_read_close_handler, graceful).await;
                                                 return;
                                             }
                                         };
@@ -264,13 +269,15 @@ impl Client {
                                 }
                                 Err(e) => {
                                     warn!("{} failed to read frame {}", opts.client_id, e);
-                                    Self::on_read_loop_close(&opts.client_id, stream, opaque_map, opts.on_read_close_handler).await;
+                                    let graceful = opts.closed.load(Ordering::SeqCst) || opts.on_close_cancel.is_cancelled();
+                                    Self::on_read_loop_close(&opts.client_id, stream, opaque_map, opts.on_read_close_handler, graceful).await;
                                     return;
                                 }
                             }
                         }
                         None => {
-                            Self::on_read_loop_close(&opts.client_id, stream, opaque_map, opts.on_read_close_handler).await;
+                            let graceful = opts.closed.load(Ordering::SeqCst) || opts.on_close_cancel.is_cancelled();
+                            Self::on_read_loop_close(&opts.client_id, stream, opaque_map, opts.on_read_close_handler, graceful).await;
                             return;
                         }
                     }
@@ -338,6 +345,9 @@ impl Dispatcher for Client {
         let read_opaque_map = Arc::clone(&opaque_map);
         let read_uuid = opts.id.clone();
 
+        let closed = Arc::new(AtomicBool::new(false));
+        let read_closed = Arc::clone(&closed);
+
         tokio::spawn(async move {
             Client::read_loop(
                 reader,
@@ -351,6 +361,7 @@ impl Dispatcher for Client {
                     disable_decompression: opts.disable_decompression,
                     local_addr,
                     peer_addr,
+                    closed: read_closed,
                 },
             )
             .await;
@@ -368,7 +379,7 @@ impl Dispatcher for Client {
             local_addr,
             peer_addr,
 
-            closed: AtomicBool::new(false),
+            closed,
         }
     }
 
