@@ -399,7 +399,7 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                             .store(Arc::new(StdKvClientBabysitterClientState { client: None }));
                         let mut msg = format!(
                             "Client babysitter {} error creating new client {}",
-                            &client_opts.id, e
+                            client_opts.id, e
                         );
                         if *e.kind() == ErrorKind::Shutdown {
                             return;
