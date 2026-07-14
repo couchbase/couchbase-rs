@@ -187,7 +187,11 @@ impl PartialEq for ErrorImpl {
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.inner.kind)
+        write!(f, "{}", self.inner.kind)?;
+        if let Some(source) = &self.inner.source {
+            write!(f, ": {source}")?;
+        }
+        Ok(())
     }
 }
 
