@@ -55,7 +55,7 @@ impl Stream for SearchRespReader {
             Poll::Ready(Some(Ok(RawJsonRowItem::Row(row_data)))) => {
                 let row: search_json::Row = match serde_json::from_slice(&row_data).map_err(|e| {
                     error::Error::new_message_error(
-                        format!("failed to parse row: {}", &e),
+                        format!("failed to parse row: {}", e),
                         this.endpoint.clone(),
                     )
                 }) {
@@ -205,7 +205,7 @@ impl SearchRespReader {
             Ok(m) => m,
             Err(e) => {
                 return Err(error::Error::new_message_error(
-                    format!("failed to parse metadata: {}", &e),
+                    format!("failed to parse metadata: {}", e),
                     self.endpoint.clone(),
                 ));
             }

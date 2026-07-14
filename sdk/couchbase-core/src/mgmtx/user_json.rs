@@ -150,7 +150,7 @@ impl TryFrom<UserAndMetadataJson> for UserAndMetadata {
     fn try_from(val: UserAndMetadataJson) -> Result<UserAndMetadata, Self::Error> {
         let password_changed = if let Some(pc) = val.password_changed_date {
             Some(DateTime::parse_from_rfc3339(&pc).map_err(|e| {
-                error::Error::new_message_error(format!("failed to parse date: {}", &e))
+                error::Error::new_message_error(format!("failed to parse date: {}", e))
             })?)
         } else {
             None

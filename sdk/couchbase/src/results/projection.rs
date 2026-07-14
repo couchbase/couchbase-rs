@@ -217,10 +217,7 @@ impl SubdocPath {
 fn resolve_projection_value<'a>(root: &'a Value, parts: &[SubdocPath]) -> Option<&'a Value> {
     let mut current = root;
     for part in parts {
-        match current.get(part.path.as_str()) {
-            Some(next) => current = next,
-            None => return None,
-        }
+        current = current.get(part.path.as_str())?;
     }
     Some(current)
 }
