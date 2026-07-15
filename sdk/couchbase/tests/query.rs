@@ -222,9 +222,22 @@ fn test_query_indexes() {
         )
         .await;
 
+        manager
+            .create_index(
+                "test_index_nested".to_string(),
+                vec![
+                    "d.firstName".to_string(),
+                    "d.permissions.`/admin/role`".to_string(),
+                    "`d.firstName`".to_string(),
+                ],
+                opts.clone(),
+            )
+            .await
+            .unwrap();
+
         let indexes = manager.get_all_indexes(None).await.unwrap();
 
-        assert_eq!(2, indexes.len());
+        assert_eq!(3, indexes.len());
 
         let primary_index = indexes.iter().find(|idx| idx.name() == "#primary").unwrap();
         assert!(primary_index.is_primary());
@@ -238,10 +251,27 @@ fn test_query_indexes() {
         assert_eq!(test_index.state(), "deferred");
         assert_eq!(test_index.keyspace(), &collection);
 
+        let nested_index = indexes
+            .iter()
+            .find(|idx| idx.name() == "test_index_nested")
+            .unwrap();
+        let nested_key = nested_index.index_key();
+        assert_eq!(3, nested_key.len());
+        assert!(nested_key[0].contains("`d`"));
+        assert!(nested_key[0].contains("`firstName`"));
+        assert!(nested_key[1].contains("`d`"));
+        assert!(nested_key[1].contains("`permissions`"));
+        assert!(nested_key[1].contains("`/admin/role`"));
+        // distinct from the nested `d`.`firstName` path above.
+        assert_eq!("`d.firstName`", nested_key[2]);
+
         manager.build_deferred_indexes(None).await.unwrap();
 
         manager
-            .watch_indexes(vec!["test_index".to_string()], None)
+            .watch_indexes(
+                vec!["test_index".to_string(), "test_index_nested".to_string()],
+                None,
+            )
             .await
             .unwrap();
 
@@ -249,6 +279,11 @@ fn test_query_indexes() {
 
         manager
             .drop_index("test_index".to_string(), None)
+            .await
+            .unwrap();
+
+        manager
+            .drop_index("test_index_nested".to_string(), None)
             .await
             .unwrap();
 
