@@ -348,11 +348,7 @@ impl<C: Client> Query<C> {
             build_keyspace(opts.bucket_name, &opts.scope_name, &opts.collection_name)
         ));
 
-        let mut encoded_fields: Vec<String> = Vec::with_capacity(opts.fields.len());
-        for field in opts.fields {
-            encoded_fields.push(encode_identifier(field));
-        }
-        qs.push_str(&format!(" ( {})", encoded_fields.join(",")));
+        qs.push_str(&format!(" ({})", opts.fields.join(",")));
 
         let mut with: HashMap<&str, Value> = HashMap::new();
 
