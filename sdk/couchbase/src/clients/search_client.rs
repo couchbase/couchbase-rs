@@ -23,9 +23,10 @@ use crate::options::search_options::SearchOptions;
 use crate::results::search_results::SearchResult;
 use crate::retry::RetryStrategy;
 use crate::search::request::SearchRequest;
+use crate::search::scoring::Scoring;
 use couchbase_core::searchx;
 use couchbase_core::searchx::query_options::{
-    Consistency, ConsistencyLevel, ConsistencyVectors, Control, KnnOperator, KnnQuery,
+    Consistency, ConsistencyLevel, ConsistencyVectors, Control, KnnOperator, KnnQuery, Params,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -105,6 +106,7 @@ impl CouchbaseSearchClient {
         }
     }
 
+    #[allow(deprecated)]
     pub async fn search(
         &self,
         index_name: String,
@@ -113,14 +115,43 @@ impl CouchbaseSearchClient {
     ) -> error::Result<SearchResult> {
         let opts = opts.unwrap_or_default();
 
-        let score = if let Some(disable_scoring) = opts.disable_scoring {
-            if disable_scoring {
-                Some("none".to_string())
-            } else {
-                None
-            }
+        if opts.disable_scoring.is_some() && opts.scoring.is_some() {
+            return Err(error::Error::invalid_argument(
+                "scoring",
+                "cannot be used with disable_scoring",
+            ));
+        }
+
+        let (score, params) = if let Some(scoring) = opts.scoring {
+            let score = match &scoring {
+                Scoring::None => "none",
+                Scoring::ReciprocalRankFusion(_) => "rrf",
+                Scoring::RelativeScoreFusion(_) => "rsf",
+            };
+
+            let params = match scoring {
+                Scoring::None => None,
+                Scoring::ReciprocalRankFusion(rank) => {
+                    if rank.rank_constant.is_some() || rank.window_size.is_some() {
+                        Some(
+                            Params::default()
+                                .score_rank_constant(rank.rank_constant)
+                                .score_window_size(rank.window_size),
+                        )
+                    } else {
+                        None
+                    }
+                }
+                Scoring::RelativeScoreFusion(rsf) => rsf
+                    .window_size
+                    .map(|window_size| Params::default().score_window_size(window_size)),
+            };
+
+            (Some(score.to_string()), params)
+        } else if opts.disable_scoring == Some(true) {
+            (Some("none".to_string()), None)
         } else {
-            None
+            (None, None)
         };
 
         if opts.consistent_with.is_some() && opts.scan_consistency.is_some() {
@@ -231,6 +262,7 @@ impl CouchbaseSearchClient {
             .sort(opts.sort.map(|s| s.into_iter().map(|i| i.into()).collect()))
             .knn(knn)
             .knn_operator(knn_operator)
+            .params(params)
             .raw(opts.raw)
             .scope_name(scope_name)
             .bucket_name(bucket_name)

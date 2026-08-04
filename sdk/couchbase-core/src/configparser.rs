@@ -104,6 +104,9 @@ impl ConfigParser {
             if caps.contains(&"vectorSearch".to_string()) {
                 features.push(ParsedConfigFeature::FtsVectorSearch);
             }
+            if caps.contains(&"scoreFusion".to_string()) {
+                features.push(ParsedConfigFeature::FtsScoreFusion);
+            }
         }
 
         let cluster_labels = if config.cluster_name.is_some() || config.cluster_uuid.is_some() {

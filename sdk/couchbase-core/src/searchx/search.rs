@@ -54,6 +54,7 @@ pub struct Search<C: Client> {
     pub auth: Auth,
 
     pub vector_search_enabled: bool,
+    pub score_fusion_enabled: bool,
     pub(crate) tracing: Arc<TracingComponent>,
 }
 
@@ -110,6 +111,16 @@ impl<C: Client> Search<C> {
             return Err(error::Error::new_unsupported_feature_error(
                 "vector search".to_string(),
             ));
+        }
+
+        if !self.score_fusion_enabled {
+            if let Some(score) = opts.score.as_ref() {
+                if score == "rrf" || score == "rsf" {
+                    return Err(Error::new_unsupported_feature_error(
+                        "score fusion".to_string(),
+                    ));
+                }
+            }
         }
 
         let req_uri = if let Some(bucket) = &opts.bucket_name {

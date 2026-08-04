@@ -303,6 +303,9 @@ impl AgentComponentConfigs {
                 vector_search_enabled: config
                     .features
                     .contains(&ParsedConfigFeature::FtsVectorSearch),
+                score_fusion_enabled: config
+                    .features
+                    .contains(&ParsedConfigFeature::FtsScoreFusion),
             },
             mgmt_config: MgmtComponentConfig {
                 endpoints: mgmt_endpoints,

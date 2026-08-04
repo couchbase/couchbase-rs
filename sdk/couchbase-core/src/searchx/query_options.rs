@@ -99,6 +99,31 @@ impl Highlight {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct Params {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score_rank_constant: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score_window_size: Option<u32>,
+}
+
+impl Params {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn score_rank_constant(mut self, value: impl Into<Option<u32>>) -> Self {
+        self.score_rank_constant = value.into();
+        self
+    }
+
+    pub fn score_window_size(mut self, value: impl Into<Option<u32>>) -> Self {
+        self.score_window_size = value.into();
+        self
+    }
+}
+
 pub type ConsistencyVectors = HashMap<String, HashMap<String, u64>>;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
@@ -256,6 +281,8 @@ pub struct QueryOptions {
     pub(crate) knn: Option<Vec<KnnQuery>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) knn_operator: Option<KnnOperator>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) params: Option<Params>,
 
     #[serde(skip_serializing_if = "Option::is_none", flatten)]
     pub(crate) raw: Option<HashMap<String, serde_json::Value>>,
@@ -291,6 +318,7 @@ impl QueryOptions {
             sort: None,
             knn: None,
             knn_operator: None,
+            params: None,
             raw: None,
             index_name: index_name.into(),
             scope_name: None,
@@ -381,6 +409,11 @@ impl QueryOptions {
 
     pub fn knn_operator(mut self, knn_operator: impl Into<Option<KnnOperator>>) -> Self {
         self.knn_operator = knn_operator.into();
+        self
+    }
+
+    pub fn params(mut self, params: impl Into<Option<Params>>) -> Self {
+        self.params = params.into();
         self
     }
 

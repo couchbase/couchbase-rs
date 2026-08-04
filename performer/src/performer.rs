@@ -74,6 +74,7 @@ impl PerformerService for Performer {
             sdk::Caps::SdkSearch,
             sdk::Caps::SdkVectorSearch,
             sdk::Caps::SdkVectorSearchBase64,
+            sdk::Caps::SdkSearchScoreFusion,
             sdk::Caps::SdkScopeSearch,
             sdk::Caps::SdkSearchRfcRevision11,
             sdk::Caps::SdkScopeSearchIndexManagement,
