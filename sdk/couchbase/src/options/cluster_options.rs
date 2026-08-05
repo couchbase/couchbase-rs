@@ -37,6 +37,7 @@ use tokio_native_tls::native_tls::Identity;
 #[cfg(all(feature = "rustls-tls", not(feature = "native-tls")))]
 use {
     couchbase_core::insecure_certverfier::InsecureCertVerifier,
+    tokio_rustls::rustls::client::Resumption,
     tokio_rustls::rustls::crypto::aws_lc_rs::default_provider,
     tokio_rustls::rustls::pki_types::pem::{PemObject, SectionKind},
     tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer},
@@ -600,7 +601,7 @@ impl TlsOptions {
             builder.with_root_certificates(store)
         };
 
-        let config = match auth {
+        let mut config = match auth {
             Authenticator::CertificateAuthenticator(a) => {
                 let clone = a.clone();
                 builder
@@ -613,6 +614,9 @@ impl TlsOptions {
             }
             _ => builder.with_no_client_auth(),
         };
+
+        // The config is shared across services so session tickets can leak cross-service.
+        config.resumption = Resumption::disabled();
 
         Ok(Arc::new(config))
     }
