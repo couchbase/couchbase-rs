@@ -356,10 +356,8 @@ pub(crate) fn error_to_retry_reason(
             match err.kind() {
                 Server(e) => return server_error_to_retry_reason(rs, e),
                 Resource(e) => return server_error_to_retry_reason(rs, e.cause()),
-                Cancelled(e) => {
-                    if e == &CancellationErrorKind::ClosedInFlight {
-                        return Some(RetryReason::SocketClosedWhileInFlight);
-                    }
+                Cancelled(e) if e == &CancellationErrorKind::ClosedInFlight => {
+                    return Some(RetryReason::SocketClosedWhileInFlight);
                 }
                 Dispatch { .. } => return Some(RetryReason::SocketNotAvailable),
                 _ => {}
@@ -397,10 +395,8 @@ pub(crate) fn error_to_retry_reason(
             _ => {}
         },
         ErrorKind::Search(e) => match e.kind() {
-            searchx::error::ErrorKind::Server(e) => {
-                if e.status_code() == 429 {
-                    return Some(RetryReason::SearchTooManyRequests);
-                }
+            searchx::error::ErrorKind::Server(e) if e.status_code() == 429 => {
+                return Some(RetryReason::SearchTooManyRequests);
             }
             searchx::error::ErrorKind::Http { error, .. } => match error.kind() {
                 httpx::error::ErrorKind::SendRequest(_) => {
@@ -471,10 +467,8 @@ fn server_error_to_retry_reason(rs: &Arc<RetryManager>, e: &ServerError) -> Opti
         ServerErrorKind::SyncWriteRecommitInProgress => {
             return Some(RetryReason::KvSyncWriteRecommitInProgress);
         }
-        ServerErrorKind::UnknownStatus { status } => {
-            if rs.err_map_component.should_retry(status) {
-                return Some(RetryReason::KvErrorMapRetryIndicated);
-            }
+        ServerErrorKind::UnknownStatus { status } if rs.err_map_component.should_retry(status) => {
+            return Some(RetryReason::KvErrorMapRetryIndicated);
         }
         _ => {}
     }
