@@ -247,6 +247,10 @@
 //! Instead, unstable features are commented with **uncommitted** or **volatile**.
 
 extern crate core;
+
+/// The version of this SDK, as declared in its `Cargo.toml`.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod authenticator;
 pub mod bucket;
 mod capella_ca;
