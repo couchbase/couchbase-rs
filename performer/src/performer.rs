@@ -112,7 +112,7 @@ impl PerformerService for Performer {
             sdk_implementation_caps,
             performer_caps,
             performer_user_agent: "rust".to_string(),
-            library_version: "0.0.1".to_string(),
+            library_version: couchbase::VERSION.to_string(),
             transactions_protocol_version: None,
             supported_apis: vec![Api::Default.into()],
         }))
