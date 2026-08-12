@@ -22,6 +22,7 @@ use crate::error::Error;
 use crate::mutation_state::MutationState;
 use crate::retry::RetryStrategy;
 use crate::search::facets::Facet;
+use crate::search::scoring::Scoring;
 use crate::search::sort::Sort;
 use serde::Serialize;
 use serde_json::Value;
@@ -149,11 +150,16 @@ pub struct SearchOptions {
     pub sort: Option<Vec<Sort>>,
     /// Facets to include in the result for aggregation.
     pub facets: Option<HashMap<String, Facet>>,
+    /// Controls how results are scored. See [`Scoring`] for the available modes.
+    ///
+    /// **Volatile: This API is subject to change at any time.**
+    pub scoring: Option<Scoring>,
     /// Raw key/value parameters passed directly to the search request body.
     pub raw: Option<HashMap<String, Value>>,
     /// If `true`, includes term location information in the result.
     pub include_locations: Option<bool>,
     /// If `true`, disables scoring (useful when only sorting or filtering).
+    #[deprecated(since = "1.1.0", note = "Use `scoring(Scoring::None)` instead")]
     pub disable_scoring: Option<bool>,
     /// Server-side timeout for the search.
     pub server_timeout: Option<Duration>,
@@ -227,6 +233,14 @@ impl SearchOptions {
         self
     }
 
+    /// Sets how results are scored. See [`Scoring`] for the available modes.
+    ///
+    /// **Volatile: This API is subject to change at any time.**
+    pub fn scoring(mut self, scoring: Scoring) -> Self {
+        self.scoring = Some(scoring);
+        self
+    }
+
     /// Adds a raw key/value parameter to the search request body.
     pub fn add_raw<T: Serialize>(
         mut self,
@@ -256,6 +270,8 @@ impl SearchOptions {
     }
 
     /// If `true`, disables scoring (useful when only sorting or filtering).
+    #[deprecated(since = "1.1.0", note = "Use `scoring(Scoring::None)` instead")]
+    #[allow(deprecated)]
     pub fn disable_scoring(mut self, disable_scoring: bool) -> Self {
         self.disable_scoring = Some(disable_scoring);
         self

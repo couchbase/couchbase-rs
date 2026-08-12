@@ -63,6 +63,7 @@ pub(crate) struct ParsedConfigNode {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum ParsedConfigFeature {
     FtsVectorSearch,
+    FtsScoreFusion,
     Unknown,
 }
 

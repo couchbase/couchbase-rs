@@ -152,4 +152,8 @@ enum Caps {
 
   // The SDK supports the RESUMING status in the result of functions_status() of the eventing management API.
   SDK_EVENTING_RESUMING_FUNCTION_STATUS = 40;
+
+  // The SDK supports score fusion for hybrid search (SDK-RFC 52).
+  // Support for SDK_VECTOR_SEARCH is a prerequisite.
+  SDK_SEARCH_SCORE_FUSION = 41;
 }

@@ -81,6 +81,7 @@ impl<'a> EnsureIndexHelper<'a> {
             canonical_endpoint: target.canonical_endpoint.to_string(),
             auth: target.auth.clone(),
             vector_search_enabled: true,
+            score_fusion_enabled: true,
             tracing: Default::default(),
         }
         .get_index(&GetIndexOptions {
@@ -126,6 +127,7 @@ impl<'a> EnsureIndexHelper<'a> {
             canonical_endpoint: target.canonical_endpoint.to_string(),
             auth: target.auth.clone(),
             vector_search_enabled: true,
+            score_fusion_enabled: true,
             tracing: Default::default(),
         }
         .refresh_config(&RefreshConfigOptions::new())

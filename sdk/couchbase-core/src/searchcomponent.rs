@@ -67,6 +67,7 @@ pub(crate) struct SearchComponent<C: Client> {
 #[derive(Debug)]
 pub(crate) struct SearchComponentState {
     pub vector_search_enabled: bool,
+    pub score_fusion_enabled: bool,
 }
 
 pub(crate) struct SearchComponentConfig {
@@ -74,6 +75,7 @@ pub(crate) struct SearchComponentConfig {
     pub authenticator: Authenticator,
 
     pub vector_search_enabled: bool,
+    pub score_fusion_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -102,6 +104,7 @@ impl<C: Client + 'static> SearchComponent<C> {
             retry_manager,
             state: ArcSwap::new(Arc::new(SearchComponentState {
                 vector_search_enabled: config.vector_search_enabled,
+                score_fusion_enabled: config.score_fusion_enabled,
             })),
         }
     }
@@ -120,6 +123,7 @@ impl<C: Client + 'static> SearchComponent<C> {
 
         self.state.swap(Arc::new(SearchComponentState {
             vector_search_enabled: config.vector_search_enabled,
+            score_fusion_enabled: config.score_fusion_enabled,
         }));
     }
 
@@ -157,6 +161,7 @@ impl<C: Client + 'static> SearchComponent<C> {
                             auth,
 
                             vector_search_enabled: self.state.load().vector_search_enabled,
+                            score_fusion_enabled: self.state.load().score_fusion_enabled,
                             tracing: self.tracing.clone(),
                         }
                         .query(&copts)
@@ -475,6 +480,7 @@ impl<C: Client + 'static> SearchComponent<C> {
                 canonical_endpoint: target.canonical_endpoint,
                 auth: target.auth,
                 vector_search_enabled: false,
+                score_fusion_enabled: false,
                 tracing: self.tracing.clone(),
             };
 
@@ -511,6 +517,7 @@ impl<C: Client + 'static> SearchComponent<C> {
                 auth: target.auth,
 
                 vector_search_enabled: self.state.load().vector_search_enabled,
+                score_fusion_enabled: self.state.load().score_fusion_enabled,
                 tracing: self.tracing.clone(),
             };
 
@@ -598,6 +605,7 @@ impl<C: Client + 'static> SearchComponent<C> {
                                 auth,
 
                                 vector_search_enabled: self.state.load().vector_search_enabled,
+                                score_fusion_enabled: self.state.load().score_fusion_enabled,
                                 tracing: self.tracing.clone(),
                             })
                             .await
@@ -641,6 +649,7 @@ impl<C: Client + 'static> SearchComponent<C> {
                                 auth,
 
                                 vector_search_enabled: self.state.load().vector_search_enabled,
+                                score_fusion_enabled: self.state.load().score_fusion_enabled,
                                 tracing: self.tracing.clone(),
                             })
                             .await

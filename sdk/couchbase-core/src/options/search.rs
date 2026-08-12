@@ -21,7 +21,7 @@ use crate::retry::{RetryStrategy, DEFAULT_RETRY_STRATEGY};
 use crate::searchx;
 use crate::searchx::facets::Facet;
 use crate::searchx::queries::Query;
-use crate::searchx::query_options::{Control, Highlight, KnnOperator, KnnQuery};
+use crate::searchx::query_options::{Control, Highlight, KnnOperator, KnnQuery, Params};
 use crate::searchx::sort::Sort;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -46,6 +46,7 @@ pub struct SearchOptions {
     pub sort: Option<Vec<Sort>>,
     pub knn: Option<Vec<KnnQuery>>,
     pub knn_operator: Option<KnnOperator>,
+    pub params: Option<Params>,
 
     pub raw: Option<HashMap<String, serde_json::Value>>,
 
@@ -79,6 +80,7 @@ impl SearchOptions {
             sort: None,
             knn: None,
             knn_operator: None,
+            params: None,
             raw: None,
             index_name: index_name.into(),
             scope_name: None,
@@ -174,6 +176,11 @@ impl SearchOptions {
         self
     }
 
+    pub fn params(mut self, params: impl Into<Option<Params>>) -> Self {
+        self.params = params.into();
+        self
+    }
+
     pub fn raw(mut self, raw: impl Into<Option<HashMap<String, serde_json::Value>>>) -> Self {
         self.raw = raw.into();
         self
@@ -225,6 +232,7 @@ impl From<SearchOptions> for searchx::query_options::QueryOptions {
             sort: opts.sort,
             knn: opts.knn,
             knn_operator: opts.knn_operator,
+            params: opts.params,
             raw: opts.raw,
             index_name: opts.index_name,
             scope_name: opts.scope_name,

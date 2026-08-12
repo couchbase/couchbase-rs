@@ -1,11 +1,13 @@
 use crate::errors::error::{Error, Result};
 use crate::proto::protocol::sdk::search::search_facet::Facet;
 use crate::proto::protocol::sdk::search::{
-    search_sort, Highlight, HighlightStyle, SearchFacet, SearchGeoDistanceUnits, SearchOptions,
-    SearchScanConsistency, SearchSort, VectorQueryCombination, VectorSearchOptions,
+    search_scoring, search_sort, Highlight, HighlightStyle, SearchFacet, SearchGeoDistanceUnits,
+    SearchOptions, SearchScanConsistency, SearchScoring, SearchSort, VectorQueryCombination,
+    VectorSearchOptions,
 };
 use chrono::{DateTime, FixedOffset, Utc};
 use couchbase::options::search_options::ScanConsistency::NotBounded;
+use couchbase::search::scoring::{ReciprocalRankScoreFusion, RelativeScoreScoreFusion, Scoring};
 use couchbase::search::sort::{Sort, SortFieldMode, SortFieldType, SortGeoDistanceUnit};
 use prost_types::Timestamp;
 use std::time::SystemTime;
@@ -72,7 +74,45 @@ impl TryFrom<SearchOptions> for couchbase::options::search_options::SearchOption
         if let Some(_serializer) = opts.serialize {
             return Err(Error::unimplemented("serializer is unimplemented"));
         }
+        if let Some(scoring) = opts.scoring {
+            copts = copts.scoring(scoring.try_into()?);
+        }
+        #[allow(deprecated)]
+        if let Some(disable_scoring) = opts.disable_scoring {
+            copts = copts.disable_scoring(disable_scoring);
+        }
         Ok(copts)
+    }
+}
+
+impl TryFrom<SearchScoring> for Scoring {
+    type Error = Box<Error>;
+
+    fn try_from(proto: SearchScoring) -> Result<Self> {
+        let mode = proto
+            .mode
+            .ok_or_else(|| Error::invalid_argument("Search scoring mode is not set"))?;
+
+        match mode {
+            search_scoring::Mode::None(_) => Ok(Scoring::None),
+            search_scoring::Mode::ReciprocalRankFusion(rrf) => {
+                let mut fusion = ReciprocalRankScoreFusion::new();
+                if let Some(rank_constant) = rrf.rank_constant {
+                    fusion = fusion.rank_constant(rank_constant);
+                }
+                if let Some(window_size) = rrf.window_size {
+                    fusion = fusion.window_size(window_size);
+                }
+                Ok(Scoring::ReciprocalRankFusion(fusion))
+            }
+            search_scoring::Mode::RelativeScoreFusion(rsf) => {
+                let mut fusion = RelativeScoreScoreFusion::new();
+                if let Some(window_size) = rsf.window_size {
+                    fusion = fusion.window_size(window_size);
+                }
+                Ok(Scoring::RelativeScoreFusion(fusion))
+            }
+        }
     }
 }
 
