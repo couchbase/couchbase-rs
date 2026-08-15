@@ -16,13 +16,15 @@
  *
  */
 
+use bytes::Bytes;
+
 use crate::error;
 use crate::mutationtoken::MutationToken;
 use std::time::Duration;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct GetResult {
-    pub value: Vec<u8>,
+    pub value: Bytes,
     pub flags: u32,
     pub datatype: u8,
     pub cas: u64,
@@ -32,7 +34,7 @@ pub struct GetResult {
 pub struct GetMetaResult {
     pub cas: u64,
     pub flags: u32,
-    pub value: Vec<u8>,
+    pub value: Bytes,
     pub datatype: u8,
     pub server_duration: Option<Duration>,
     pub expiry: u32,
@@ -54,7 +56,7 @@ pub struct DeleteResult {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct GetAndLockResult {
-    pub value: Vec<u8>,
+    pub value: Bytes,
     pub flags: u32,
     pub datatype: u8,
     pub cas: u64,
@@ -62,7 +64,7 @@ pub struct GetAndLockResult {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct GetAndTouchResult {
-    pub value: Vec<u8>,
+    pub value: Bytes,
     pub flags: u32,
     pub datatype: u8,
     pub cas: u64,
