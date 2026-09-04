@@ -62,8 +62,17 @@ fn map_cb_error_to_proto(kind: &ErrorKind) -> CouchbaseExceptionType {
         ErrorKind::RateLimitedFailure => CouchbaseExceptionType::SdkRateLimitedException,
         ErrorKind::QuotaLimitedFailure => CouchbaseExceptionType::SdkQuotaLimitedException,
         ErrorKind::DocumentNotFound => CouchbaseExceptionType::SdkDocumentNotFoundException,
+        ErrorKind::DocumentNotFoundOnReplica => {
+            CouchbaseExceptionType::SdkDocumentNotFoundOnReplicaException
+        }
         ErrorKind::DocumentUnretrievable => {
             CouchbaseExceptionType::SdkDocumentUnretrievableException
+        }
+        ErrorKind::ReplicaIndexOutOfBounds => {
+            CouchbaseExceptionType::SdkReplicaIndexOutOfBoundsException
+        }
+        ErrorKind::ReplicaIndexCurrentlyUnavailable => {
+            CouchbaseExceptionType::SdkReplicaIndexCurrentlyUnavailableException
         }
         ErrorKind::DocumentLocked => CouchbaseExceptionType::SdkDocumentLockedException,
         ErrorKind::ValueTooLarge => CouchbaseExceptionType::SdkValueTooLargeException,

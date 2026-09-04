@@ -20,6 +20,7 @@ use crate::clients::agent_provider::CouchbaseAgentProvider;
 use crate::durability_level::parse_optional_durability_level_to_memdx;
 use crate::error;
 use crate::error::Error;
+use crate::get_replica_strategy::{GetReplicaStrategy, GetReplicaStrategyKind};
 use crate::mutation_state::MutationToken;
 use crate::options::kv_binary_options::{
     AppendOptions, DecrementOptions, IncrementOptions, PrependOptions,
@@ -27,7 +28,7 @@ use crate::options::kv_binary_options::{
 use crate::options::kv_options::*;
 use crate::results::kv_binary_results::CounterResult;
 use crate::results::kv_results::{
-    ExistsResult, GetResult, LookupInResult, LookupInResultEntry, MutateInResult,
+    ExistsResult, GetReplicaResult, GetResult, LookupInResult, LookupInResultEntry, MutateInResult,
     MutateInResultEntry, MutationResult, TouchResult,
 };
 use crate::results::projection::{build_from_full_doc, build_from_subdoc_entries};
@@ -252,6 +253,42 @@ impl CouchbaseCoreKvClient {
         } else {
             self.get_direct(id, options).await
         }
+    }
+
+    pub async fn get_replica(
+        &self,
+        id: &str,
+        strategy: GetReplicaStrategy,
+        options: GetReplicaOptions,
+    ) -> error::Result<GetReplicaResult> {
+        let agent = self.agent_provider.get_agent().await;
+        let agent = CouchbaseAgentProvider::upgrade_agent(agent)?;
+        let retry = options
+            .retry_strategy
+            .unwrap_or_else(|| self.default_retry_strategy.clone());
+
+        let core_strategy = match strategy.kind() {
+            GetReplicaStrategyKind::FromIndex(s) => {
+                couchbase_core::options::crud::GetReplicaStrategy::FromIndex {
+                    replica_index: s.index.vbucket_server_index(),
+                    wrap: s.wrap,
+                }
+            }
+        };
+
+        let res = agent
+            .get_replica(
+                couchbase_core::options::crud::GetReplicaOptions::new(
+                    id.as_bytes(),
+                    &self.scope_name,
+                    &self.collection_name,
+                    core_strategy,
+                )
+                .retry_strategy(retry),
+            )
+            .await?;
+
+        Ok(res.into())
     }
 
     async fn get_direct(&self, id: &str, options: GetOptions) -> error::Result<GetResult> {

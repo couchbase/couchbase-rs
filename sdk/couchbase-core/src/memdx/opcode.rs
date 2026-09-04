@@ -24,6 +24,7 @@ use crate::memdx::error::Error;
 #[non_exhaustive]
 pub enum OpCode {
     Get,
+    GetReplica,
     Set,
     Add,
     Replace,
@@ -83,6 +84,7 @@ impl From<OpCode> for u8 {
             OpCode::SASLListMechs => 0x20,
             OpCode::SASLAuth => 0x21,
             OpCode::SASLStep => 0x22,
+            OpCode::GetReplica => 0x83,
             OpCode::SelectBucket => 0x89,
             OpCode::GetLocked => 0x94,
             OpCode::UnlockKey => 0x95,
@@ -116,6 +118,7 @@ impl TryFrom<u8> for OpCode {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         let code = match value {
             0x00 => OpCode::Get,
+            0x83 => OpCode::GetReplica,
             0x01 => OpCode::Set,
             0x02 => OpCode::Add,
             0x03 => OpCode::Replace,
@@ -163,6 +166,7 @@ impl Display for OpCode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let txt = match self {
             OpCode::Get => "Get",
+            OpCode::GetReplica => "Get replica",
             OpCode::Set => "Set",
             OpCode::Add => "Add",
             OpCode::Replace => "Replace",

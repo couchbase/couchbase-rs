@@ -264,6 +264,7 @@ pub mod diagnostics;
 pub mod durability_level;
 pub mod error;
 mod error_context;
+pub mod get_replica_strategy;
 #[cfg(feature = "logging-meter")]
 pub mod logging_meter;
 pub mod management;
