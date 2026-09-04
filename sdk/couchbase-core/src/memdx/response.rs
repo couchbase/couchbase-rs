@@ -383,6 +383,58 @@ impl TraceAttributes for GetResponse {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct GetReplicaResponse {
+    pub cas: u64,
+    pub flags: u32,
+    pub value: Bytes,
+    pub datatype: u8,
+    pub server_duration: Option<Duration>,
+}
+
+impl TryFromClientResponse for GetReplicaResponse {
+    fn try_from(resp: ClientResponse) -> Result<Self, Error> {
+        let packet = resp.packet();
+        let status = packet.status;
+
+        if status == Status::KeyNotFound {
+            return Err(ServerError::new(
+                ServerErrorKind::KeyNotFound,
+                packet.op_code,
+                packet.status,
+                packet.opaque,
+            )
+            .into());
+        } else if status != Status::Success {
+            return Err(OpsCrud::decode_common_error(&packet));
+        }
+
+        let flags = parse_flags(&packet.extras)?;
+
+        let server_duration = if let Some(f) = &packet.framing_extras {
+            decode_res_ext_frames(f)?
+        } else {
+            None
+        };
+
+        let value = packet.value.unwrap_or_default();
+
+        Ok(GetReplicaResponse {
+            cas: packet.cas.unwrap_or_default(),
+            flags,
+            value,
+            datatype: packet.datatype,
+            server_duration,
+        })
+    }
+}
+
+impl TraceAttributes for GetReplicaResponse {
+    fn server_duration(&self) -> Option<Duration> {
+        self.server_duration
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct GetMetaResponse {
     pub cas: u64,
     pub flags: u32,

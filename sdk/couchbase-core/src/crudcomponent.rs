@@ -35,24 +35,25 @@ use crate::memdx::error::ServerErrorKind;
 use crate::memdx::hello_feature::HelloFeature;
 use crate::memdx::request::{
     AddRequest, AppendRequest, DecrementRequest, DeleteRequest, GetAndLockRequest,
-    GetAndTouchRequest, GetCollectionIdRequest, GetMetaRequest, GetRequest, IncrementRequest,
-    LookupInRequest, MutateInRequest, PrependRequest, ReplaceRequest, SetRequest, TouchRequest,
-    UnlockRequest,
+    GetAndTouchRequest, GetCollectionIdRequest, GetMetaRequest, GetReplicaRequest, GetRequest,
+    IncrementRequest, LookupInRequest, MutateInRequest, PrependRequest, ReplaceRequest, SetRequest,
+    TouchRequest, UnlockRequest,
 };
 use crate::memdx::response::{LookupInResponse, MutateInResponse};
 use crate::mutationtoken::MutationToken;
 use crate::nmvbhandler::NotMyVbucketConfigHandler;
 use crate::options::crud::{
     AddOptions, AppendOptions, DecrementOptions, DeleteOptions, GetAndLockOptions,
-    GetAndTouchOptions, GetCollectionIdOptions, GetMetaOptions, GetOptions, IncrementOptions,
-    LookupInOptions, MutateInOptions, PrependOptions, ReplaceOptions, TouchOptions, UnlockOptions,
-    UpsertOptions,
+    GetAndTouchOptions, GetCollectionIdOptions, GetMetaOptions, GetOptions, GetReplicaOptions,
+    GetReplicaStrategy, IncrementOptions, LookupInOptions, MutateInOptions, PrependOptions,
+    ReplaceOptions, TouchOptions, UnlockOptions, UpsertOptions,
 };
+use crate::replica_helpers::next_replica_index_to_try;
 use crate::results::kv::{
     AddResult, AppendResult, DecrementResult, DeleteResult, GetAndLockResult, GetAndTouchResult,
-    GetCollectionIdResult, GetMetaResult, GetResult, IncrementResult, LookupInResult,
-    MutateInResult, PrependResult, ReplaceResult, SubDocResult, TouchResult, UnlockResult,
-    UpsertResult,
+    GetCollectionIdResult, GetMetaResult, GetReplicaResult, GetResult, IncrementResult,
+    LookupInResult, MutateInResult, PrependResult, ReplaceResult, SubDocResult, TouchResult,
+    UnlockResult, UpsertResult,
 };
 use crate::retry::{
     error_to_retry_reason, orchestrate_retries, RetryManager, RetryRequest, RetryStrategy,
@@ -204,6 +205,129 @@ impl<
             },
         )
         .await
+    }
+
+    pub(crate) async fn get_replica(
+        &self,
+        opts: GetReplicaOptions<'_>,
+    ) -> Result<GetReplicaResult> {
+        match opts.strategy {
+            GetReplicaStrategy::FromIndex {
+                replica_index,
+                wrap,
+            } => {
+                self.get_replica_from_index(
+                    opts.key,
+                    opts.scope_name,
+                    opts.collection_name,
+                    opts.retry_strategy,
+                    replica_index,
+                    wrap,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn get_replica_from_index(
+        &self,
+        key: &[u8],
+        scope_name: &str,
+        collection_name: &str,
+        retry_strategy: Arc<dyn RetryStrategy>,
+        requested_index: u32,
+        wrap: bool,
+    ) -> Result<GetReplicaResult> {
+        orchestrate_retries(
+            self.retry_manager.clone(),
+            retry_strategy,
+            RetryRequest::new("get_replica", true),
+            async || {
+                self.get_replica_attempt(key, scope_name, collection_name, requested_index, wrap)
+                    .await
+            },
+        )
+        .await
+    }
+
+    async fn get_replica_attempt(
+        &self,
+        key: &[u8],
+        scope_name: &str,
+        collection_name: &str,
+        requested_index: u32,
+        wrap: bool,
+    ) -> Result<GetReplicaResult> {
+        let mut replica_index = requested_index;
+        let mut hops_left: Option<u32> = None;
+
+        loop {
+            let result = orchestrate_memd_collection_id(
+                self.collections.clone(),
+                scope_name,
+                collection_name,
+                async |collection_id: u32| {
+                    orchestrate_memd_routing(
+                        self.router.clone(),
+                        self.nmvb_handler.clone(),
+                        key,
+                        replica_index,
+                        async |endpoint: Arc<str>, vb_id: u16| {
+                            orchestrate_endpoint_kv_client(
+                                self.conn_manager.clone(),
+                                &endpoint,
+                                async |client: Arc<KvClientManagerClientType<M>>| {
+                                    client
+                                        .get_replica(GetReplicaRequest {
+                                            collection_id,
+                                            key,
+                                            vbucket_id: vb_id,
+                                            on_behalf_of: None,
+                                        })
+                                        .map_err(|e| {
+                                            let e = Self::update_memdx_err(
+                                                client.clone(),
+                                                e,
+                                                key.to_vec(),
+                                                scope_name,
+                                                collection_name,
+                                            )
+                                            .set_is_replica(replica_index != 0);
+
+                                            Error::new_contextual_memdx_error(e)
+                                        })
+                                        .map_ok(|resp| GetReplicaResult {
+                                            value: resp.value.to_vec(),
+                                            datatype: resp.datatype,
+                                            cas: resp.cas,
+                                            flags: resp.flags,
+                                            is_replica: replica_index != 0,
+                                        })
+                                        .await
+                                },
+                            )
+                            .await
+                        },
+                    )
+                    .await
+                },
+            )
+            .await;
+
+            let err = match result {
+                Ok(r) => return Ok(r),
+                Err(e) => e,
+            };
+
+            if wrap {
+                if let Some(next) = next_replica_index_to_try(&err, replica_index, &mut hops_left) {
+                    replica_index = next;
+                    continue;
+                }
+            }
+
+            return Err(err);
+        }
     }
 
     pub(crate) async fn get_meta(&self, opts: GetMetaOptions<'_>) -> Result<GetMetaResult> {

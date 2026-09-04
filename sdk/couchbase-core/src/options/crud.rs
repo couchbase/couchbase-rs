@@ -50,6 +50,44 @@ impl<'a> GetOptions<'a> {
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
+pub enum GetReplicaStrategy {
+    FromIndex { replica_index: u32, wrap: bool },
+}
+
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct GetReplicaOptions<'a> {
+    pub key: &'a [u8],
+    pub scope_name: &'a str,
+    pub collection_name: &'a str,
+    pub strategy: GetReplicaStrategy,
+    pub retry_strategy: Arc<dyn RetryStrategy>,
+}
+
+impl<'a> GetReplicaOptions<'a> {
+    pub fn new(
+        key: &'a [u8],
+        scope_name: &'a str,
+        collection_name: &'a str,
+        strategy: GetReplicaStrategy,
+    ) -> Self {
+        Self {
+            key,
+            scope_name,
+            collection_name,
+            strategy,
+            retry_strategy: DEFAULT_RETRY_STRATEGY.clone(),
+        }
+    }
+
+    pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
+        self.retry_strategy = retry_strategy;
+        self
+    }
+}
+
+#[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct GetMetaOptions<'a> {
     pub key: &'a [u8],
     pub scope_name: &'a str,

@@ -301,6 +301,30 @@ impl RetryManager {
     }
 }
 
+pub(crate) async fn retry_after_error(
+    rs: &Arc<RetryManager>,
+    strategy: &Arc<dyn RetryStrategy>,
+    retry_info: &mut RetryRequest,
+    err: &mut Error,
+) -> Option<Duration> {
+    if let Some(reason) = error_to_retry_reason(rs, retry_info, err) {
+        if let Some(duration) = rs.maybe_retry(strategy.clone(), retry_info, reason).await {
+            debug!(
+                "Retrying {} after {:?} due to {}",
+                retry_info, duration, reason
+            );
+            return Some(duration);
+        }
+    }
+
+    if retry_info.retry_attempts > 0 {
+        // If we aren't retrying then attach any retry info that we have.
+        err.set_retry_info(retry_info.clone());
+    }
+
+    None
+}
+
 pub(crate) async fn orchestrate_retries<Fut, Resp>(
     rs: Arc<RetryManager>,
     strategy: Arc<dyn RetryStrategy>,
@@ -319,23 +343,9 @@ where
             Err(e) => e,
         };
 
-        if let Some(reason) = error_to_retry_reason(&rs, &mut retry_info, &err) {
-            if let Some(duration) = rs
-                .maybe_retry(strategy.clone(), &mut retry_info, reason)
-                .await
-            {
-                debug!(
-                    "Retrying {} after {:?} due to {}",
-                    &retry_info, duration, reason
-                );
-                sleep(duration).await;
-                continue;
-            }
-        }
-
-        if retry_info.retry_attempts > 0 {
-            // If we aren't retrying then attach any retry info that we have.
-            err.set_retry_info(retry_info);
+        if let Some(duration) = retry_after_error(&rs, &strategy, &mut retry_info, &mut err).await {
+            sleep(duration).await;
+            continue;
         }
 
         return Err(err);

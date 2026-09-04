@@ -99,6 +99,7 @@ impl PerformerService for Performer {
             sdk::Caps::SdkStableOtelSemanticConventions,
             sdk::Caps::SdkStableOtelSemanticConventionsEmittedByDefault,
             sdk::Caps::SdkQuery2120,
+            sdk::Caps::SdkGetReplica,
         ]
         .into_iter()
         .map(|c| c.into())

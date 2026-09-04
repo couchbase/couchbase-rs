@@ -31,9 +31,9 @@ use crate::mgmtx::user::{Group, RoleAndDescription, UserAndMetadata};
 use crate::options::analytics::{AnalyticsOptions, GetPendingMutationsOptions};
 use crate::options::crud::{
     AddOptions, AppendOptions, DecrementOptions, DeleteOptions, GetAndLockOptions,
-    GetAndTouchOptions, GetCollectionIdOptions, GetMetaOptions, GetOptions, IncrementOptions,
-    LookupInOptions, MutateInOptions, PrependOptions, ReplaceOptions, TouchOptions, UnlockOptions,
-    UpsertOptions,
+    GetAndTouchOptions, GetCollectionIdOptions, GetMetaOptions, GetOptions, GetReplicaOptions,
+    IncrementOptions, LookupInOptions, MutateInOptions, PrependOptions, ReplaceOptions,
+    TouchOptions, UnlockOptions, UpsertOptions,
 };
 use crate::options::diagnostics::DiagnosticsOptions;
 use crate::options::management::{
@@ -65,8 +65,9 @@ use crate::results::analytics::AnalyticsResultStream;
 use crate::results::diagnostics::DiagnosticsResult;
 use crate::results::kv::{
     AddResult, AppendResult, DecrementResult, DeleteResult, GetAndLockResult, GetAndTouchResult,
-    GetCollectionIdResult, GetMetaResult, GetResult, IncrementResult, LookupInResult,
-    MutateInResult, PrependResult, ReplaceResult, TouchResult, UnlockResult, UpsertResult,
+    GetCollectionIdResult, GetMetaResult, GetReplicaResult, GetResult, IncrementResult,
+    LookupInResult, MutateInResult, PrependResult, ReplaceResult, TouchResult, UnlockResult,
+    UpsertResult,
 };
 use crate::results::pingreport::PingReport;
 use crate::results::query::QueryResultStream;
@@ -178,6 +179,26 @@ impl Agent {
                 .await;
         }
         self.inner.crud.get(opts).await
+    }
+
+    pub async fn get_replica(&self, opts: GetReplicaOptions<'_>) -> Result<GetReplicaResult> {
+        #[cfg(feature = "top-level-spans")]
+        {
+            let bucket_name = self.get_bucket_name();
+            return self
+                .execute_observable_operation(
+                    Some(crate::tracingcomponent::SERVICE_VALUE_KV),
+                    build_keyspace(
+                        bucket_name.as_deref(),
+                        Some(opts.scope_name),
+                        Some(opts.collection_name),
+                    ),
+                    create_span!("get_replica"),
+                    || self.inner.crud.get_replica(opts),
+                )
+                .await;
+        }
+        self.inner.crud.get_replica(opts).await
     }
 
     pub async fn get_meta(&self, opts: GetMetaOptions<'_>) -> Result<GetMetaResult> {

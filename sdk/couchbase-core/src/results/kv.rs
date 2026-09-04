@@ -29,6 +29,15 @@ pub struct GetResult {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct GetReplicaResult {
+    pub value: Vec<u8>,
+    pub flags: u32,
+    pub datatype: u8,
+    pub cas: u64,
+    pub is_replica: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct GetMetaResult {
     pub cas: u64,
     pub flags: u32,

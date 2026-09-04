@@ -88,6 +88,58 @@ impl GetResult {
     }
 }
 
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct GetReplicaResult {
+    pub(crate) content: Vec<u8>,
+    pub(crate) flags: u32,
+    pub(crate) cas: u64,
+    pub(crate) is_replica: bool,
+}
+
+impl GetReplicaResult {
+    /// Deserializes the document content into the requested type using JSON transcoding.
+    ///
+    /// # Errors
+    ///
+    /// Returns a decoding error if the content cannot be deserialized into `V`.
+    pub fn content_as<V: DeserializeOwned>(&self) -> error::Result<V> {
+        let (content, flags) = self.content_as_raw();
+        transcoding::json::decode(content, flags)
+    }
+
+    /// Returns the raw document content bytes and the associated common flags.
+    ///
+    /// Use this for custom transcoding or when working with non-JSON data.
+    pub fn content_as_raw(&self) -> (&[u8], u32) {
+        (&self.content, self.flags)
+    }
+
+    /// Returns the CAS (Compare-And-Swap) value of the document.
+    ///
+    /// The CAS value changes on every mutation and can be used for optimistic concurrency
+    /// control with operations like [`replace`](crate::collection::Collection) and
+    /// [`remove`](crate::collection::Collection).
+    pub fn cas(&self) -> u64 {
+        self.cas
+    }
+
+    /// Returns whether the document came from a replica, or the active node.
+    pub fn is_replica(&self) -> bool {
+        self.is_replica
+    }
+}
+
+impl From<couchbase_core::results::kv::GetReplicaResult> for GetReplicaResult {
+    fn from(result: couchbase_core::results::kv::GetReplicaResult) -> Self {
+        Self {
+            content: result.value,
+            flags: result.flags,
+            cas: result.cas,
+            is_replica: result.is_replica,
+        }
+    }
+}
+
 impl From<couchbase_core::results::kv::GetResult> for GetResult {
     fn from(result: couchbase_core::results::kv::GetResult) -> Self {
         Self {
