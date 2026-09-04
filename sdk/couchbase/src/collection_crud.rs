@@ -25,6 +25,7 @@
 //! a `Result` with the appropriate result type.
 
 use crate::collection::Collection;
+use crate::get_replica_strategy::GetReplicaStrategy;
 use crate::options::kv_options::*;
 use crate::results::kv_results::*;
 use crate::subdoc::lookup_in_specs::LookupInSpec;
@@ -352,6 +353,65 @@ impl Collection {
         let result = self
             .core_kv_client
             .get(id.as_ref(), options.into().unwrap_or_default())
+            .instrument(ctx.span().clone())
+            .await;
+        ctx.end_operation(result.as_ref().err());
+        result
+    }
+
+    /// Retrieves a document from one of its replicas, per the given [`GetReplicaStrategy`].
+    ///
+    /// Returns a [`GetReplicaResult`] which can be deserialized into a concrete type via
+    /// [`GetReplicaResult::content_as`].
+    ///
+    /// Fails with
+    /// [`ErrorKind::DocumentNotFoundOnReplica`](crate::error::ErrorKind::DocumentNotFoundOnReplica)
+    /// if the replica read has no document for this key,
+    /// [`ErrorKind::ReplicaIndexOutOfBounds`](crate::error::ErrorKind::ReplicaIndexOutOfBounds)
+    /// if the requested replica index exceeds the bucket's replica count (and `wrap` was not
+    /// set), or
+    /// [`ErrorKind::ReplicaIndexCurrentlyUnavailable`](crate::error::ErrorKind::ReplicaIndexCurrentlyUnavailable)
+    /// if the requested replica currently has no node assigned (e.g. mid-rebalance/failover).
+    ///
+    /// # Arguments
+    ///
+    /// * `id` — The document key.
+    /// * `strategy` — A [`GetReplicaStrategy`] describing which replica to read from.
+    /// * `options` — Optional [`GetReplicaOptions`].
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use couchbase::collection::Collection;
+    /// # use couchbase::get_replica_strategy::{GetReplicaStrategy, ReplicaIndex};
+    /// # async fn example(collection: Collection) -> couchbase::error::Result<()> {
+    /// let strategy = GetReplicaStrategy::from_index(ReplicaIndex::First, None);
+    /// let result = collection.get_replica("user::1", strategy, None).await?;
+    /// let user: serde_json::Value = result.content_as()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn get_replica(
+        &self,
+        id: impl AsRef<str>,
+        strategy: impl Into<GetReplicaStrategy>,
+        options: impl Into<Option<GetReplicaOptions>>,
+    ) -> crate::error::Result<GetReplicaResult> {
+        let ctx = self
+            .tracing_client
+            .begin_operation(
+                Some(SERVICE_VALUE_KV),
+                self.keyspace(),
+                create_span!("get_replica"),
+            )
+            .await;
+        let result = self
+            .core_kv_client
+            .get_replica(
+                id.as_ref(),
+                strategy.into(),
+                options.into().unwrap_or_default(),
+            )
             .instrument(ctx.span().clone())
             .await;
         ctx.end_operation(result.as_ref().err());

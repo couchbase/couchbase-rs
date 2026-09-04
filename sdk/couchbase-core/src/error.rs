@@ -153,6 +153,11 @@ pub enum ErrorKind {
     #[non_exhaustive]
     NoServerAssigned {
         requested_vb_id: u16,
+        /// Which node in the vbucket's server list was requested (`0` = active,
+        /// `1..=3` = replicas).
+        vb_server_idx: u32,
+        /// How many replicas the bucket is configured with.
+        num_replicas: usize,
     },
     #[non_exhaustive]
     CollectionManifestOutdated {
@@ -224,8 +229,15 @@ impl Display for ErrorKind {
                 write!(f, "feature not available: {feature}, {msg}")
             }
             ErrorKind::Internal { msg } => write!(f, "internal error: {msg}"),
-            ErrorKind::NoServerAssigned { requested_vb_id } => {
-                write!(f, "no server assigned for vbucket id: {requested_vb_id}")
+            ErrorKind::NoServerAssigned {
+                requested_vb_id,
+                vb_server_idx,
+                num_replicas,
+            } => {
+                write!(
+                    f,
+                    "no server assigned for vbucket id: {requested_vb_id}, server index: {vb_server_idx}, num replicas: {num_replicas}"
+                )
             }
             ErrorKind::InvalidVbucket {
                 requested_vb_id,
@@ -302,6 +314,7 @@ pub struct InnerMemdxError {
     bucket_name: Option<String>,
     scope_name: Option<String>,
     collection_name: Option<String>,
+    is_replica: bool,
 }
 
 impl Deref for MemdxError {
@@ -323,6 +336,7 @@ impl MemdxError {
                 bucket_name: None,
                 scope_name: None,
                 collection_name: None,
+                is_replica: false,
             }),
         }
     }
@@ -359,6 +373,15 @@ impl MemdxError {
 
     pub fn collection_name(&self) -> Option<&String> {
         self.inner.collection_name.as_ref()
+    }
+
+    pub fn is_replica(&self) -> bool {
+        self.inner.is_replica
+    }
+
+    pub(crate) fn set_is_replica(mut self, is_replica: bool) -> Self {
+        self.inner.is_replica = is_replica;
+        self
     }
 
     pub(crate) fn set_doc_id(mut self, doc_id: Vec<u8>) -> Self {

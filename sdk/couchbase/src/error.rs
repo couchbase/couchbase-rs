@@ -118,6 +118,7 @@ impl Error {
         bucket_name: String,
         scope_name: String,
         collection_name: String,
+        is_replica: bool,
     ) -> (ErrorKind, KeyValueErrorContext) {
         let doc_id = String::from_utf8_lossy(doc_id).to_string();
 
@@ -147,7 +148,13 @@ impl Error {
             }
         }
 
-        (e.kind().into(), extended_context)
+        let kind = if is_replica && *e.kind() == ServerErrorKind::KeyNotFound {
+            ErrorKind::DocumentNotFoundOnReplica
+        } else {
+            e.kind().into()
+        };
+
+        (kind, extended_context)
     }
 
     fn parse_query_server_error(
@@ -262,8 +269,17 @@ pub enum ErrorKind {
     // Key Value Error Definitions RFC#58@16
     /// The document was not found in the collection.
     DocumentNotFound,
+    /// A [`Collection::get_replica`](crate::collection::Collection::get_replica) found
+    /// no document for this key on the replica it read from.
+    DocumentNotFoundOnReplica,
     /// The document exists but could not be retrieved (e.g. all replicas failed).
     DocumentUnretrievable,
+    /// A [`GetReplicaStrategy`](crate::get_replica_strategy::GetReplicaStrategy) requested
+    /// a replica index that the bucket does not have (and `wrap` was not set).
+    ReplicaIndexOutOfBounds,
+    /// The requested replica exists in the bucket's topology, but no node is currently
+    /// assigned to it (e.g. mid-rebalance or during a failover).
+    ReplicaIndexCurrentlyUnavailable,
     /// The document is locked by another operation.
     DocumentLocked,
     /// The value is too large for the server to store.
@@ -399,7 +415,10 @@ impl Display for ErrorKind {
             ErrorKind::QuotaLimitedFailure => "quota limited failure",
             ErrorKind::RequestCanceled => "request canceled",
             ErrorKind::DocumentNotFound => "document not found",
+            ErrorKind::DocumentNotFoundOnReplica => "document not found on replica",
             ErrorKind::DocumentUnretrievable => "document unretrievable",
+            ErrorKind::ReplicaIndexOutOfBounds => "replica index out of bounds",
+            ErrorKind::ReplicaIndexCurrentlyUnavailable => "replica index currently unavailable",
             ErrorKind::DocumentLocked => "document locked",
             ErrorKind::ValueTooLarge => "value too large",
             ErrorKind::DocumentExists => "document exists",
@@ -472,7 +491,10 @@ impl MetricsName for ErrorKind {
             ErrorKind::QuotaLimitedFailure => "QuotaLimited",
             ErrorKind::RequestCanceled => "RequestCanceled",
             ErrorKind::DocumentNotFound => "DocumentNotFound",
+            ErrorKind::DocumentNotFoundOnReplica => "DocumentNotFoundOnReplica",
             ErrorKind::DocumentUnretrievable => "DocumentUnretrievable",
+            ErrorKind::ReplicaIndexOutOfBounds => "ReplicaIndexOutOfBounds",
+            ErrorKind::ReplicaIndexCurrentlyUnavailable => "ReplicaIndexCurrentlyUnavailable",
             ErrorKind::DocumentLocked => "DocumentLocked",
             ErrorKind::ValueTooLarge => "ValueTooLarge",
             ErrorKind::DocumentExists => "DocumentExists",
@@ -637,7 +659,7 @@ impl From<couchbase_core::error::Error> for Error {
                 context: Box::new(None),
             },
             couchbase_core::error::ErrorKind::InvalidReplica { .. } => Error {
-                kind: Box::new(ErrorKind::OtherFailure(value.to_string())),
+                kind: Box::new(ErrorKind::ReplicaIndexOutOfBounds),
                 context: Box::new(None),
             },
             couchbase_core::error::ErrorKind::NoEndpointsAvailable => Error {
@@ -660,8 +682,12 @@ impl From<couchbase_core::error::Error> for Error {
                 kind: Box::new(ErrorKind::OtherFailure(value.to_string())),
                 context: Box::new(None),
             },
-            couchbase_core::error::ErrorKind::NoServerAssigned { .. } => Error {
-                kind: Box::new(ErrorKind::OtherFailure(value.to_string())),
+            couchbase_core::error::ErrorKind::NoServerAssigned { vb_server_idx, .. } => Error {
+                kind: Box::new(if *vb_server_idx > 0 {
+                    ErrorKind::ReplicaIndexCurrentlyUnavailable
+                } else {
+                    ErrorKind::OtherFailure(value.to_string())
+                }),
                 context: Box::new(None),
             },
             couchbase_core::error::ErrorKind::CollectionManifestOutdated { .. } => Error {
@@ -715,6 +741,7 @@ impl From<&couchbase_core::error::MemdxError> for Error {
                         .cloned()
                         .unwrap_or_default()
                         .to_string(),
+                    value.is_replica(),
                 );
 
                 (kind, Some(ExtendedErrorContext::KeyValue(extended_context)))
@@ -728,6 +755,7 @@ impl From<&couchbase_core::error::MemdxError> for Error {
                     value.bucket_name().cloned().unwrap_or_default().to_string(),
                     e.scope_name().to_string(),
                     e.collection_name().to_string(),
+                    value.is_replica(),
                 );
 
                 (kind, Some(ExtendedErrorContext::KeyValue(extended_context)))

@@ -215,6 +215,27 @@ impl GetOptions {
     }
 }
 
+/// Options for [`Collection::get_replica`](crate::collection::Collection).
+#[derive(Default, Debug, Clone)]
+#[non_exhaustive]
+pub struct GetReplicaOptions {
+    /// Override the default retry strategy.
+    pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+}
+
+impl GetReplicaOptions {
+    /// Creates a new `GetReplicaOptions` with default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets a custom retry strategy for this operation.
+    pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
+        self.retry_strategy = Some(retry_strategy);
+        self
+    }
+}
+
 /// Options for [`Collection::exists`](crate::collection::Collection).
 #[derive(Default, Debug, Clone)]
 #[non_exhaustive]
