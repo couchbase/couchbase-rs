@@ -19,19 +19,17 @@
 pub mod error;
 
 use error::ErrorKind;
-use hickory_resolver::config::*;
-use hickory_resolver::name_server::TokioConnectionProvider;
-use hickory_resolver::proto::xfer::Protocol;
-use hickory_resolver::system_conf::read_system_conf;
-use hickory_resolver::TokioResolver;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::net::SocketAddr;
-use std::time::Duration;
-use tracing::debug;
 use url::form_urlencoded;
+use {
+    hickory_resolver::config::*, hickory_resolver::net::runtime::TokioRuntimeProvider,
+    hickory_resolver::proto::rr::RData, hickory_resolver::system_conf::read_system_conf,
+    hickory_resolver::TokioResolver, std::io, std::net::SocketAddr, std::time::Duration,
+    tracing::debug,
+};
 
 pub const DEFAULT_LEGACY_HTTP_PORT: u16 = 8091;
 pub const DEFAULT_LEGACY_HTTPS_PORT: u16 = 18091;
@@ -275,6 +273,15 @@ pub async fn resolve(
         };
     };
 
+    resolve_without_srv(conn_spec, default_port, has_explicit_scheme, use_ssl)
+}
+
+fn resolve_without_srv(
+    conn_spec: ConnSpec,
+    default_port: u16,
+    has_explicit_scheme: bool,
+    use_ssl: bool,
+) -> error::Result<ResolvedConnSpec> {
     if conn_spec.hosts.is_empty() {
         let (memd_port, http_port) = if use_ssl {
             (DEFAULT_SSL_MEMD_PORT, DEFAULT_LEGACY_HTTPS_PORT)
@@ -394,13 +401,12 @@ async fn lookup_srv(
 ) -> error::Result<Vec<Address>> {
     let (resolver_config, resolver_opts) = match dns_config {
         Some(dns) => {
-            let mut group = NameServerConfigGroup::with_capacity(2);
-            let udp = NameServerConfig::new(dns.namespace, Protocol::Udp);
-            let tcp = NameServerConfig::new(dns.namespace, Protocol::Tcp);
-            group.push(udp);
-            group.push(tcp);
+            let mut ns_config = NameServerConfig::udp_and_tcp(dns.namespace.ip());
+            for conn in &mut ns_config.connections {
+                conn.port = dns.namespace.port();
+            }
 
-            let config = ResolverConfig::from_parts(None, vec![], group);
+            let config = ResolverConfig::from_name_servers(vec![ns_config]);
 
             let mut opts = ResolverOpts::default();
             if let Some(timeout) = dns.timeout {
@@ -409,23 +415,26 @@ async fn lookup_srv(
 
             (config, opts)
         }
-        None => read_system_conf().map_err(ErrorKind::Resolve)?,
+        None => read_system_conf().map_err(|e| ErrorKind::Io(io::Error::other(e.to_string())))?,
     };
 
     let resolver =
-        TokioResolver::builder_with_config(resolver_config, TokioConnectionProvider::default())
+        TokioResolver::builder_with_config(resolver_config, TokioRuntimeProvider::default())
             .with_options(resolver_opts)
-            .build();
+            .build()
+            .map_err(ErrorKind::Resolve)?;
 
     let name = format!("_{scheme}._{proto}.{host}");
     let response = resolver.srv_lookup(name).await?;
 
     let mut addresses = vec![];
-    for addr in response.iter() {
-        addresses.push(Address {
-            host: addr.target().to_string(),
-            port: addr.port(),
-        });
+    for record in response.answers() {
+        if let RData::SRV(srv) = &record.data {
+            addresses.push(Address {
+                host: srv.target.to_string(),
+                port: srv.port,
+            });
+        }
     }
 
     Ok(addresses)
@@ -451,6 +460,10 @@ mod test {
         resolve(conn_spec.clone(), None)
             .await
             .unwrap_or_else(|e| panic!("Failed to resolve {conn_spec:?}: {e:?}"))
+    }
+
+    async fn resolve_is_err(conn_spec: ConnSpec) -> bool {
+        resolve(conn_spec, None).await.is_err()
     }
 
     fn check_address_parsing(
@@ -667,14 +680,11 @@ mod test {
         .await;
 
         let cs = parse_or_die("1.2.3.4:8091");
-        assert!(
-            resolve(cs, None).await.is_err(),
-            "Expected error with http port"
-        );
+        assert!(resolve_is_err(cs).await, "Expected error with http port");
 
         let cs = parse_or_die("1.2.3.4:999");
         assert!(
-            resolve(cs, None).await.is_err(),
+            resolve_is_err(cs).await,
             "Expected error with non-default port without scheme"
         );
     }
@@ -755,7 +765,7 @@ mod test {
 
         let cs = parse_or_die("couchbase://foo.com:8091");
         assert!(
-            resolve(cs, None).await.is_err(),
+            resolve_is_err(cs).await,
             "Expected error for couchbase://XXX:8091"
         );
 
@@ -1051,5 +1061,64 @@ mod test {
             },
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn test_lookup_srv_against_mock_dns_server() {
+        use crate::DnsConfig;
+        use hickory_resolver::proto::op::{Message, OpCode};
+        use hickory_resolver::proto::rr::rdata::SRV;
+        use hickory_resolver::proto::rr::{Name, RData, Record};
+        use hickory_resolver::proto::serialize::binary::BinEncodable;
+        use std::str::FromStr;
+        use std::time::Duration;
+        use tokio::net::UdpSocket;
+
+        let target_host = "target.internal.example.";
+        let target_port = 11210u16;
+
+        let server_socket = UdpSocket::bind("127.0.0.1:0")
+            .await
+            .expect("failed to bind mock DNS server");
+        let server_addr = server_socket.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            let mut buf = [0u8; 512];
+            let Ok((len, client_addr)) = server_socket.recv_from(&mut buf).await else {
+                return;
+            };
+
+            let request = Message::from_vec(&buf[..len]).expect("failed to decode DNS query");
+            let query = request.queries[0].clone();
+
+            let mut response = Message::response(request.id, OpCode::Query);
+            response.add_query(query.clone());
+
+            let target = Name::from_str(target_host).unwrap();
+            let srv = SRV::new(0, 0, target_port, target);
+            let record = Record::from_rdata(query.name().clone(), 60, RData::SRV(srv));
+            response.add_answer(record);
+
+            let bytes = response.to_bytes().expect("failed to encode DNS response");
+            let _ = server_socket.send_to(&bytes, client_addr).await;
+        });
+
+        let conn_spec = parse_or_die("couchbase://myhost.internal.example");
+        let dns_config = DnsConfig {
+            namespace: server_addr,
+            timeout: Some(Duration::from_secs(2)),
+        };
+
+        let resolved = resolve(conn_spec, Some(dns_config))
+            .await
+            .expect("SRV resolution against the mock DNS server should succeed");
+
+        assert_eq!(
+            resolved.memd_hosts,
+            vec![Address {
+                host: target_host.to_string(),
+                port: target_port,
+            }]
+        );
     }
 }

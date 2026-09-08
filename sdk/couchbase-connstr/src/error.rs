@@ -38,7 +38,7 @@ pub enum ErrorKind {
     Parse(String),
     InvalidArgument { msg: String, arg: String },
     Io(io::Error),
-    Resolve(hickory_resolver::ResolveError),
+    Resolve(hickory_resolver::net::NetError),
 }
 
 impl Clone for ErrorKind {
@@ -82,8 +82,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<hickory_resolver::ResolveError> for Error {
-    fn from(e: hickory_resolver::ResolveError) -> Self {
+impl From<hickory_resolver::net::NetError> for Error {
+    fn from(e: hickory_resolver::net::NetError) -> Self {
         Self {
             kind: ErrorKind::Resolve(e),
         }
