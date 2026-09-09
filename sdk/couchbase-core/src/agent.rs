@@ -64,6 +64,7 @@ use crate::{httpx, mgmtx};
 
 use byteorder::BigEndian;
 use futures::executor::block_on;
+use std::env::consts::{ARCH, OS};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -348,10 +349,22 @@ impl ConfigUpdater for AgentInner {
     }
 }
 
+const MAX_KV_CLIENT_NAME_LEN: usize = 200;
+
+/// Truncates the user agent for KV HELLO if it's >200 characters long
+fn short_user_agent(user_agent: &str) -> String {
+    if user_agent.len() <= MAX_KV_CLIENT_NAME_LEN {
+        return user_agent.to_string();
+    }
+
+    user_agent.chars().take(MAX_KV_CLIENT_NAME_LEN).collect()
+}
+
 impl Agent {
     pub async fn new(opts: AgentOptions) -> Result<Self> {
         let build_version = env!("CARGO_PKG_VERSION");
-        let user_agent = format!("cb-rust/{build_version}");
+        let user_agent = format!("rust/{build_version} ({OS} {ARCH})");
+        let kv_client_name = short_user_agent(&user_agent);
         let agent_id = Uuid::new_v4().to_string();
         info!(
             "Core SDK Version: {} - Agent ID: {}",
@@ -416,7 +429,7 @@ impl Agent {
             &state,
         );
         let (first_config, cfg_source_host_port) = Self::get_first_config(
-            user_agent.clone(),
+            kv_client_name.clone(),
             first_kv_client_configs,
             &state,
             first_http_client_configs,
@@ -468,7 +481,7 @@ impl Agent {
                 num_pool_connections,
                 connect_throttle_period: opts.kv_config.connect_throttle_timeout,
                 bootstrap_options: KvClientBootstrapOptions {
-                    client_name: user_agent.clone(),
+                    client_name: kv_client_name.clone(),
                     disable_error_map: state.disable_error_map,
                     disable_mutation_tokens: state.disable_mutation_tokens,
                     disable_server_durations: state.disable_server_durations,

@@ -102,6 +102,12 @@ impl OpBootstrapEncoder for OpsCore {
             features.extend_from_slice(&bytes);
         }
 
+        let key = if request.client_name.is_empty() {
+            None
+        } else {
+            Some(request.client_name.as_slice())
+        };
+
         let op = dispatcher
             .dispatch(
                 RequestPacket {
@@ -111,7 +117,7 @@ impl OpBootstrapEncoder for OpsCore {
                     vbucket_id: None,
                     cas: None,
                     extras: None,
-                    key: None,
+                    key,
                     value: Some(&features),
                     framing_extras: None,
                     opaque: None,
