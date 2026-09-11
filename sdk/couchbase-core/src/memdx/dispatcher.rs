@@ -16,6 +16,7 @@
  *
  */
 
+use std::future::Future;
 use std::sync::Arc;
 
 use crate::memdx::client::ResponseContext;
@@ -24,7 +25,6 @@ use crate::memdx::error::Result;
 use crate::memdx::packet::{RequestPacket, ResponsePacket};
 use crate::memdx::pendingop::ClientPendingOp;
 use crate::orphan_reporter::OrphanContext;
-use async_trait::async_trait;
 use futures::future::BoxFuture;
 use tokio::sync::oneshot;
 
@@ -41,14 +41,13 @@ pub struct DispatcherOptions {
     pub id: String,
 }
 
-#[async_trait]
 pub trait Dispatcher: Send + Sync {
     fn new(conn: ConnectionType, opts: DispatcherOptions) -> Self;
-    async fn dispatch<'a>(
+    fn dispatch(
         &self,
-        packet: RequestPacket<'a>,
+        packet: RequestPacket,
         is_persistent: bool,
         response_context: Option<ResponseContext>,
-    ) -> Result<ClientPendingOp>;
-    async fn close(&self) -> Result<()>;
+    ) -> impl Future<Output = Result<ClientPendingOp>> + Send;
+    fn close(&self) -> impl Future<Output = Result<()>> + Send;
 }
