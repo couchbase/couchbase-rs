@@ -1,4 +1,4 @@
-use crate::errors::error::Result;
+use crate::errors::error::{Error, Result};
 use crate::proto::protocol::{run, sdk};
 use crate::translations::common::sdk_error_to_proto_run_result;
 use prost_types::Timestamp;
@@ -34,4 +34,18 @@ pub fn current_timestamp() -> Timestamp {
         seconds: now.as_secs() as i64,
         nanos: now.subsec_nanos() as i32,
     }
+}
+
+/// Converts a millisecond timeout value from a request into a `Duration`, rejecting negative
+/// values rather than silently casting them to `u64`, which would wrap into an effectively
+/// unbounded deadline instead of the invalid input it actually represents.
+pub fn duration_from_millis(millis: impl Into<i64>) -> Result<Duration> {
+    let millis = millis.into();
+    if millis < 0 {
+        return Err(Error::invalid_argument(format!(
+            "timeout must not be negative, got {millis}ms"
+        )));
+    }
+
+    Ok(Duration::from_millis(millis as u64))
 }

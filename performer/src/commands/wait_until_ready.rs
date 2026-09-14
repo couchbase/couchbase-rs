@@ -1,10 +1,11 @@
 use crate::commands::execution::execute_simple;
-use crate::commands::helpers::create_success_sdk_result;
+use crate::commands::helpers::{create_success_sdk_result, duration_from_millis};
 use crate::errors;
 use crate::proto::protocol::sdk::cluster::wait_until_ready::WaitUntilReadyRequest as Command;
 use couchbase::bucket::Bucket;
 use couchbase::cluster::Cluster;
 use prost_types::Timestamp;
+use std::time::Duration;
 
 #[derive(Clone)]
 pub enum Location {
@@ -27,6 +28,12 @@ impl WaitUntilReadyCommand {
             initiated: Timestamp::default(),
             command,
         }
+    }
+
+    /// The caller-supplied deadline to wait for readiness against, rejecting a negative value
+    /// rather than letting it wrap into an effectively unbounded wait.
+    pub fn timeout(&self) -> errors::error::Result<Duration> {
+        duration_from_millis(self.command.timeout_millis)
     }
 
     pub async fn execute(

@@ -1,5 +1,5 @@
 use crate::commands::execution::execute_simple;
-use crate::commands::helpers::create_success_sdk_result;
+use crate::commands::helpers::{create_success_sdk_result, duration_from_millis};
 use crate::errors::error::{Error, Result};
 use crate::observability::span_owner::SpanOwner;
 use crate::proto::protocol::sdk::scope::search::index_manager::command::Command;
@@ -18,6 +18,7 @@ use couchbase::scope::Scope;
 use prost_types::Timestamp;
 use serde_json::Value;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::Instrument;
 
 #[derive(Clone)]
@@ -27,6 +28,7 @@ pub struct SearchIndexManagerCommand {
     initiated: Timestamp,
     command_type: SearchIndexManagerCommandType,
     parent_span: Option<tracing::Span>,
+    timeout_override: Option<Duration>,
 }
 
 #[derive(Clone)]
@@ -107,6 +109,46 @@ impl SearchIndexManagerCommand {
                     .and_then(|o| o.parent_span_id.as_deref()),
             })
             .and_then(|id| span_owner.get(id));
+
+        let timeout_override = shared
+            .command
+            .as_ref()
+            .and_then(|inner| match inner {
+                SharedCommand::GetIndex(cmd) => cmd.options.as_ref().and_then(|o| o.timeout_msecs),
+                SharedCommand::GetAllIndexes(cmd) => {
+                    cmd.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                SharedCommand::UpsertIndex(cmd) => {
+                    cmd.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                SharedCommand::DropIndex(cmd) => cmd.options.as_ref().and_then(|o| o.timeout_msecs),
+                SharedCommand::GetIndexedDocumentsCount(cmd) => {
+                    cmd.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                SharedCommand::PauseIngest(cmd) => {
+                    cmd.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                SharedCommand::ResumeIngest(cmd) => {
+                    cmd.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                SharedCommand::AllowQuerying(cmd) => {
+                    cmd.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                SharedCommand::DisallowQuerying(cmd) => {
+                    cmd.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                SharedCommand::FreezePlan(cmd) => {
+                    cmd.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                SharedCommand::UnfreezePlan(cmd) => {
+                    cmd.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                SharedCommand::AnalyzeDocument(cmd) => {
+                    cmd.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+            })
+            .map(duration_from_millis)
+            .transpose()?;
 
         let command_type = match command {
             Command::Shared(shared) => match shared.command.unwrap() {
@@ -206,7 +248,14 @@ impl SearchIndexManagerCommand {
             initiated: Timestamp::default(),
             command_type,
             parent_span,
+            timeout_override,
         })
+    }
+
+    /// The per-operation timeout override, if one was set in the request's own options. This
+    /// takes precedence over the cluster-level default when present.
+    pub fn timeout_override(&self) -> Option<Duration> {
+        self.timeout_override
     }
 
     pub async fn execute(self, batcher: &crate::common::batcher::Batcher) -> Result<bool> {

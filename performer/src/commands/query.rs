@@ -31,9 +31,11 @@ pub struct QueryCommand {
     content_as: Option<As>,
     options: Option<QueryOptions>,
     parent_span: Option<tracing::Span>,
+    timeout_override: Option<Duration>,
 }
 
 impl QueryCommand {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         location: Location,
         statement: String,
@@ -42,6 +44,7 @@ impl QueryCommand {
         content_as: Option<As>,
         options: Option<QueryOptions>,
         parent_span: Option<tracing::Span>,
+        timeout_override: Option<Duration>,
     ) -> Self {
         QueryCommand {
             location,
@@ -51,7 +54,14 @@ impl QueryCommand {
             content_as,
             options,
             parent_span,
+            timeout_override,
         }
+    }
+
+    /// The per-operation timeout override, if one was set in the request's own options. This
+    /// takes precedence over the cluster-level default when present.
+    pub fn timeout_override(&self) -> Option<Duration> {
+        self.timeout_override
     }
 
     pub async fn execute(&self, batcher: &crate::common::batcher::Batcher) -> Result<bool> {

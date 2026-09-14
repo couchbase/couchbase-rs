@@ -19,10 +19,6 @@ impl TryFrom<GetAllQueryIndexOptions>
         if let Some(_collection_name) = options.collection_name {
             return Err(Error::unimplemented("collection_name is unimplemented"));
         }
-        if let Some(_timeout_msecs) = options.timeout_msecs {
-            return Err(Error::unimplemented("timeout_msecs is unimplemented"));
-        }
-
         Ok(opts)
     }
 }
@@ -54,10 +50,6 @@ impl TryFrom<CreatePrimaryQueryIndexOptions>
         if let Some(_collection_name) = options.collection_name {
             return Err(Error::unimplemented("collection_name is unimplemented"));
         }
-        if let Some(_timeout_msecs) = options.timeout_msecs {
-            return Err(Error::unimplemented("timeout_msecs is unimplemented"));
-        }
-
         Ok(opts)
     }
 }
@@ -86,10 +78,6 @@ impl TryFrom<CreateQueryIndexOptions>
         if let Some(_collection_name) = options.collection_name {
             return Err(Error::unimplemented("collection_name is unimplemented"));
         }
-        if let Some(_timeout_msecs) = options.timeout_msecs {
-            return Err(Error::unimplemented("timeout_msecs is unimplemented"));
-        }
-
         Ok(opts)
     }
 }
@@ -112,10 +100,6 @@ impl TryFrom<DropPrimaryIndexOptions>
         if let Some(_collection_name) = options.collection_name {
             return Err(Error::unimplemented("collection_name is unimplemented"));
         }
-        if let Some(_timeout_msecs) = options.timeout_msecs {
-            return Err(Error::unimplemented("timeout_msecs is unimplemented"));
-        }
-
         Ok(opts)
     }
 }
@@ -138,10 +122,6 @@ impl TryFrom<DropIndexOptions>
         if let Some(_collection_name) = options.collection_name {
             return Err(Error::unimplemented("collection_name is unimplemented"));
         }
-        if let Some(_timeout_msecs) = options.timeout_msecs {
-            return Err(Error::unimplemented("timeout_msecs is unimplemented"));
-        }
-
         Ok(opts)
     }
 }
@@ -183,10 +163,6 @@ impl TryFrom<BuildDeferredIndexesOptions>
         if let Some(_collection_name) = options.collection_name {
             return Err(Error::unimplemented("collection_name is unimplemented"));
         }
-        if let Some(_timeout_msecs) = options.timeout_msecs {
-            return Err(Error::unimplemented("timeout_msecs is unimplemented"));
-        }
-
         Ok(opts)
     }
 }

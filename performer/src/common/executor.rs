@@ -45,8 +45,13 @@ impl Executor {
             self.span_owner.clone(),
         ) {
             Ok(cmd) => {
-                cmd.execute(batcher, &self.stream_owner, self.run_id.clone())
-                    .await
+                cmd.execute(
+                    batcher,
+                    &self.stream_owner,
+                    self.run_id.clone(),
+                    &self.conn.timeout_options,
+                )
+                .await
             }
             Err(e) => match *e {
                 Error::Sdk(e) => {
