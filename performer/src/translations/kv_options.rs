@@ -6,6 +6,10 @@ use crate::proto::protocol::sdk::kv::{
 };
 use couchbase::durability_level::DurabilityLevel;
 
+// Note: `timeout_msecs` on these options is not converted into the SDK-native options here.
+// It's applied as an override on the overall operation deadline instead - see
+// `crate::commands::sdk`'s command builders and `SdkCommand::execute`.
+
 impl TryFrom<GetOptions> for couchbase::options::kv_options::GetOptions {
     type Error = Box<Error>;
 
@@ -14,10 +18,6 @@ impl TryFrom<GetOptions> for couchbase::options::kv_options::GetOptions {
 
         if let Some(with_expiry) = proto.with_expiry {
             options = options.expiry(with_expiry);
-        }
-        if let Some(_timeout) = proto.timeout_msecs {
-            // TODO: Should we wrap operations in a performer timeout to simulate user behaviour?
-            return Err(Error::unimplemented("timeout is unimplemented"));
         }
         if !proto.projection.is_empty() {
             options = options.projections(proto.projection);
@@ -33,9 +33,6 @@ impl TryFrom<InsertOptions> for couchbase::options::kv_options::InsertOptions {
     fn try_from(proto: InsertOptions) -> Result<Self> {
         let mut options = couchbase::options::kv_options::InsertOptions::new();
 
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
         if let Some(durability) = proto.durability {
             let level: DurabilityLevel = durability.try_into()?;
             options = options.durability_level(level);
@@ -54,9 +51,6 @@ impl TryFrom<ReplaceOptions> for couchbase::options::kv_options::ReplaceOptions 
     fn try_from(proto: ReplaceOptions) -> Result<Self> {
         let mut options = couchbase::options::kv_options::ReplaceOptions::new();
 
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
         if let Some(durability) = proto.durability {
             let level: DurabilityLevel = durability.try_into()?;
             options = options.durability_level(level);
@@ -81,9 +75,6 @@ impl TryFrom<UpsertOptions> for couchbase::options::kv_options::UpsertOptions {
     fn try_from(proto: UpsertOptions) -> Result<Self> {
         let mut options = couchbase::options::kv_options::UpsertOptions::new();
 
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
         if let Some(durability) = proto.durability {
             let level: DurabilityLevel = durability.try_into()?;
             options = options.durability_level(level);
@@ -105,9 +96,6 @@ impl TryFrom<RemoveOptions> for couchbase::options::kv_options::RemoveOptions {
     fn try_from(proto: RemoveOptions) -> Result<Self> {
         let mut options = couchbase::options::kv_options::RemoveOptions::new();
 
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
         if let Some(durability) = proto.durability {
             let level: DurabilityLevel = durability.try_into()?;
             options = options.durability_level(level);
@@ -123,70 +111,40 @@ impl TryFrom<RemoveOptions> for couchbase::options::kv_options::RemoveOptions {
 impl TryFrom<GetAndLockOptions> for couchbase::options::kv_options::GetAndLockOptions {
     type Error = Box<Error>;
 
-    fn try_from(proto: GetAndLockOptions) -> Result<Self> {
-        let options = couchbase::options::kv_options::GetAndLockOptions::new();
-
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
-
-        Ok(options)
+    fn try_from(_proto: GetAndLockOptions) -> Result<Self> {
+        Ok(couchbase::options::kv_options::GetAndLockOptions::new())
     }
 }
 
 impl TryFrom<GetAndTouchOptions> for couchbase::options::kv_options::GetAndTouchOptions {
     type Error = Box<Error>;
 
-    fn try_from(proto: GetAndTouchOptions) -> Result<Self> {
-        let options = couchbase::options::kv_options::GetAndTouchOptions::new();
-
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
-
-        Ok(options)
+    fn try_from(_proto: GetAndTouchOptions) -> Result<Self> {
+        Ok(couchbase::options::kv_options::GetAndTouchOptions::new())
     }
 }
 
 impl TryFrom<UnlockOptions> for couchbase::options::kv_options::UnlockOptions {
     type Error = Box<Error>;
 
-    fn try_from(proto: UnlockOptions) -> Result<Self> {
-        let options = couchbase::options::kv_options::UnlockOptions::new();
-
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
-
-        Ok(options)
+    fn try_from(_proto: UnlockOptions) -> Result<Self> {
+        Ok(couchbase::options::kv_options::UnlockOptions::new())
     }
 }
 
 impl TryFrom<TouchOptions> for couchbase::options::kv_options::TouchOptions {
     type Error = Box<Error>;
 
-    fn try_from(proto: TouchOptions) -> Result<Self> {
-        let options = couchbase::options::kv_options::TouchOptions::new();
-
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
-
-        Ok(options)
+    fn try_from(_proto: TouchOptions) -> Result<Self> {
+        Ok(couchbase::options::kv_options::TouchOptions::new())
     }
 }
 
 impl TryFrom<ExistsOptions> for couchbase::options::kv_options::ExistsOptions {
     type Error = Box<Error>;
 
-    fn try_from(proto: ExistsOptions) -> Result<Self> {
-        let options = couchbase::options::kv_options::ExistsOptions::new();
-
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
-
-        Ok(options)
+    fn try_from(_proto: ExistsOptions) -> Result<Self> {
+        Ok(couchbase::options::kv_options::ExistsOptions::new())
     }
 }
 
@@ -196,9 +154,6 @@ impl TryFrom<AppendOptions> for couchbase::options::kv_binary_options::AppendOpt
     fn try_from(proto: AppendOptions) -> Result<Self> {
         let mut options = couchbase::options::kv_binary_options::AppendOptions::new();
 
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
         if let Some(durability) = proto.durability {
             let level: DurabilityLevel = durability.try_into()?;
             options = options.durability_level(level);
@@ -217,9 +172,6 @@ impl TryFrom<PrependOptions> for couchbase::options::kv_binary_options::PrependO
     fn try_from(proto: PrependOptions) -> Result<Self> {
         let mut options = couchbase::options::kv_binary_options::PrependOptions::new();
 
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
         if let Some(durability) = proto.durability {
             let level: DurabilityLevel = durability.try_into()?;
             options = options.durability_level(level);
@@ -238,9 +190,6 @@ impl TryFrom<IncrementOptions> for couchbase::options::kv_binary_options::Increm
     fn try_from(proto: IncrementOptions) -> Result<Self> {
         let mut options = couchbase::options::kv_binary_options::IncrementOptions::new();
 
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
         if let Some(expiry) = proto.expiry {
             options = options.expiry(expiry.try_into()?)
         }
@@ -265,9 +214,6 @@ impl TryFrom<DecrementOptions> for couchbase::options::kv_binary_options::Decrem
     fn try_from(proto: DecrementOptions) -> Result<Self> {
         let mut options = couchbase::options::kv_binary_options::DecrementOptions::new();
 
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
         if let Some(expiry) = proto.expiry {
             options = options.expiry(expiry.try_into()?)
         }

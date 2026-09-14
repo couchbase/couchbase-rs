@@ -1,3 +1,4 @@
+use crate::commands::helpers::duration_from_millis;
 use crate::errors::error::{Error, Result};
 use crate::proto::protocol::sdk::search::search_facet::Facet;
 use crate::proto::protocol::sdk::search::{
@@ -58,8 +59,8 @@ impl TryFrom<SearchOptions> for couchbase::options::search_options::SearchOption
             .collect::<std::result::Result<_, _>>()?;
         copts = copts.facets(facets);
 
-        if let Some(_timeout) = opts.timeout_millis {
-            return Err(Error::unimplemented("timeout is unimplemented"));
+        if let Some(timeout_millis) = opts.timeout_millis {
+            copts = copts.server_timeout(duration_from_millis(timeout_millis)?);
         }
         for (k, v) in opts.raw {
             copts = copts

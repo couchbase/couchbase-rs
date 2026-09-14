@@ -2,10 +2,10 @@ use crate::cluster::connection::ConnectionSet;
 use crate::commands::authenticator::AuthenticatorCommand;
 use crate::commands::bucket_management::BucketManagerCommand;
 use crate::commands::collection_management::CollectionManagerCommand;
-use crate::commands::helpers::current_timestamp;
+use crate::commands::helpers::{current_timestamp, duration_from_millis};
 use crate::commands::kv::{
     ExistsCommand, GetAndLockCommand, GetAndTouchCommand, GetCommand, InsertCommand, KvCommand,
-    RemoveCommand, ReplaceCommand, TouchCommand, UnlockCommand, UpsertCommand,
+    KvCommandKind, RemoveCommand, ReplaceCommand, TouchCommand, UnlockCommand, UpsertCommand,
 };
 use crate::commands::kv_binary::{
     AppendCommand, DecrementCommand, IncrementCommand, PrependCommand,
@@ -52,11 +52,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
 
-pub(crate) const MANAGEMENT_TIMEOUT: Duration = Duration::from_secs(75);
-pub(crate) const KV_TIMEOUT: Duration = Duration::from_millis(2500);
-pub(crate) const QUERY_TIMEOUT: Duration = Duration::from_secs(75);
-pub(crate) const SEARCH_TIMEOUT: Duration = Duration::from_secs(75);
-
 pub enum SdkCommand {
     KV(KvCommand),
     Query(QueryCommand),
@@ -76,31 +71,67 @@ impl SdkCommand {
         batcher: &crate::common::batcher::Batcher,
         stream_owner: &Arc<StreamOwner>,
         run_id: String,
+        timeout_options: &crate::cluster::options::TimeoutOptions,
     ) -> Result<bool> {
         match self {
-            SdkCommand::KV(cmd) => run_with_timeout(KV_TIMEOUT, cmd.execute(batcher)).await,
-            SdkCommand::Query(cmd) => run_with_timeout(QUERY_TIMEOUT, cmd.execute(batcher)).await,
+            SdkCommand::KV(cmd) => {
+                let default = if cmd.is_durable_write() {
+                    timeout_options.kv_durable_timeout
+                } else {
+                    timeout_options.kv_timeout
+                };
+                let timeout = cmd.timeout_override().unwrap_or(default);
+                run_with_timeout(timeout, cmd.execute(batcher)).await
+            }
+            SdkCommand::Query(cmd) => {
+                let timeout = cmd
+                    .timeout_override()
+                    .unwrap_or(timeout_options.query_timeout);
+                run_with_timeout(timeout, cmd.execute(batcher)).await
+            }
             SdkCommand::QueryManagement(cmd) => {
-                run_with_timeout(MANAGEMENT_TIMEOUT, cmd.execute(batcher)).await
+                let timeout = cmd
+                    .timeout_override()
+                    .unwrap_or(timeout_options.management_timeout);
+                run_with_timeout(timeout, cmd.execute(batcher)).await
             }
             SdkCommand::CollectionManagement(cmd) => {
-                run_with_timeout(MANAGEMENT_TIMEOUT, cmd.execute(batcher)).await
+                let timeout = cmd
+                    .timeout_override()
+                    .unwrap_or(timeout_options.management_timeout);
+                run_with_timeout(timeout, cmd.execute(batcher)).await
             }
             SdkCommand::BucketManagement(cmd) => {
-                run_with_timeout(MANAGEMENT_TIMEOUT, cmd.execute(batcher)).await
+                let timeout = cmd
+                    .timeout_override()
+                    .unwrap_or(timeout_options.management_timeout);
+                run_with_timeout(timeout, cmd.execute(batcher)).await
             }
             SdkCommand::SearchIndexManagement(cmd) => {
-                run_with_timeout(MANAGEMENT_TIMEOUT, cmd.execute(batcher)).await
+                let timeout = cmd
+                    .timeout_override()
+                    .unwrap_or(timeout_options.management_timeout);
+                run_with_timeout(timeout, cmd.execute(batcher)).await
             }
             SdkCommand::WaitUntilReady(cmd) => {
-                run_with_timeout(MANAGEMENT_TIMEOUT, cmd.execute(batcher)).await
+                let timeout = cmd.timeout()?;
+                run_with_timeout(timeout, cmd.execute(batcher)).await
             }
             SdkCommand::Search(cmd) => {
-                run_with_timeout(SEARCH_TIMEOUT, cmd.execute(batcher, stream_owner, run_id)).await
+                let timeout = cmd
+                    .timeout_override()
+                    .unwrap_or(timeout_options.search_timeout);
+                run_with_timeout(timeout, cmd.execute(batcher, stream_owner, run_id)).await
             }
             SdkCommand::Authenticator(cmd) => cmd.execute(batcher).await,
         }
     }
+}
+
+/// Converts a proto millisecond timeout field into a per-operation timeout override, rejecting
+/// a negative value rather than letting it wrap into an effectively unbounded deadline.
+fn timeout_override_millis(millis: Option<impl Into<i64>>) -> Result<Option<Duration>> {
+    millis.map(duration_from_millis).transpose()
 }
 
 /// Helper to run a future with a timeout, returning a timeout error if elapsed.
@@ -563,18 +594,24 @@ fn build_mutate_in_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
+    let timeout_override =
+        timeout_override_millis(mutate_in.options.as_ref().and_then(|o| o.timeout_millis))?;
+
     let opts = mutate_in.options.map(|opts| opts.try_into()).transpose()?;
 
-    Ok(SdkCommand::KV(KvCommand::MutateIn(MutateInCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        specs,
-        contents_as,
-        opts,
-        parent_span,
-    ))))
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::MutateIn(MutateInCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            specs,
+            contents_as,
+            opts,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_lookup_in_command(
@@ -636,18 +673,24 @@ fn build_lookup_in_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
+    let timeout_override =
+        timeout_override_millis(lookup_in.options.as_ref().and_then(|o| o.timeout_millis))?;
+
     let opts = lookup_in.options.map(|opts| opts.try_into()).transpose()?;
 
-    Ok(SdkCommand::KV(KvCommand::LookupIn(LookupInCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        specs,
-        contents_as,
-        opts,
-        parent_span,
-    ))))
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::LookupIn(LookupInCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            specs,
+            contents_as,
+            opts,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_query_command(
@@ -670,6 +713,9 @@ fn build_query_command(
         .and_then(|o| o.parent_span_id.as_deref())
         .and_then(|id| span_owner.get(id));
 
+    let timeout_override =
+        timeout_override_millis(query.options.as_ref().and_then(|o| o.timeout_millis))?;
+
     let opts = query.options.map(|opts| opts.try_into()).transpose()?;
 
     let command = QueryCommand::new(
@@ -680,6 +726,7 @@ fn build_query_command(
         content_as,
         opts,
         parent_span,
+        timeout_override,
     );
 
     Ok(SdkCommand::Query(command))
@@ -701,6 +748,13 @@ fn build_search_command(
         .and_then(|o| o.parent_span_id.as_deref())
         .and_then(|id| span_owner.get(id));
 
+    let timeout_override = timeout_override_millis(
+        search_wrapper
+            .options
+            .as_ref()
+            .and_then(|o| o.timeout_millis),
+    )?;
+
     let opts = search_wrapper
         .options
         .map(|opts| opts.try_into())
@@ -715,6 +769,7 @@ fn build_search_command(
         fields_as,
         search.stream_config.unwrap(),
         parent_span,
+        timeout_override,
     );
 
     Ok(SdkCommand::Search(command))
@@ -743,19 +798,25 @@ fn build_get_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Get(GetCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        content_as,
-        transcoder,
-        get.options
-            .clone()
-            .map(|opts| opts.try_into())
-            .transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(get.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Get(GetCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            content_as,
+            transcoder,
+            get.options
+                .clone()
+                .map(|opts| opts.try_into())
+                .transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_insert_command(
@@ -780,16 +841,22 @@ fn build_insert_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Insert(InsertCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        content,
-        transcoder,
-        insert.options.map(|opts| opts.try_into()).transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(insert.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Insert(InsertCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            content,
+            transcoder,
+            insert.options.map(|opts| opts.try_into()).transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_replace_command(
@@ -814,16 +881,22 @@ fn build_replace_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Replace(ReplaceCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        content,
-        transcoder,
-        replace.options.map(|opts| opts.try_into()).transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(replace.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Replace(ReplaceCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            content,
+            transcoder,
+            replace.options.map(|opts| opts.try_into()).transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_upsert_command(
@@ -848,16 +921,22 @@ fn build_upsert_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Upsert(UpsertCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        content,
-        transcoder,
-        upsert.options.map(|opts| opts.try_into()).transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(upsert.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Upsert(UpsertCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            content,
+            transcoder,
+            upsert.options.map(|opts| opts.try_into()).transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_remove_command(
@@ -880,14 +959,20 @@ fn build_remove_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Remove(RemoveCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        remove.options.map(|opts| opts.try_into()).transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(remove.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Remove(RemoveCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            remove.options.map(|opts| opts.try_into()).transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_get_and_lock_command(
@@ -920,8 +1005,11 @@ fn build_get_and_lock_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::GetAndLock(
-        GetAndLockCommand::new(
+    let timeout_override =
+        timeout_override_millis(get_and_lock.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::GetAndLock(GetAndLockCommand::new(
             collection,
             doc_location.id().to_string(),
             duration,
@@ -935,7 +1023,8 @@ fn build_get_and_lock_command(
                 .map(|opts| opts.try_into())
                 .transpose()?,
             parent_span,
-        ),
+        )),
+        timeout_override,
     )))
 }
 
@@ -969,8 +1058,11 @@ fn build_get_and_touch_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::GetAndTouch(
-        GetAndTouchCommand::new(
+    let timeout_override =
+        timeout_override_millis(get_and_touch.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::GetAndTouch(GetAndTouchCommand::new(
             collection,
             doc_location.id().to_string(),
             expiry,
@@ -984,7 +1076,8 @@ fn build_get_and_touch_command(
                 .map(|opts| opts.try_into())
                 .transpose()?,
             parent_span,
-        ),
+        )),
+        timeout_override,
     )))
 }
 
@@ -1008,19 +1101,25 @@ fn build_unlock_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Unlock(UnlockCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        unlock.cas as u64,
-        return_result,
-        current_timestamp(),
-        unlock
-            .options
-            .clone()
-            .map(|opts| opts.try_into())
-            .transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(unlock.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Unlock(UnlockCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            unlock.cas as u64,
+            return_result,
+            current_timestamp(),
+            unlock
+                .options
+                .clone()
+                .map(|opts| opts.try_into())
+                .transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_exists_command(
@@ -1043,18 +1142,24 @@ fn build_exists_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Exists(ExistsCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        exists
-            .options
-            .clone()
-            .map(|opts| opts.try_into())
-            .transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(exists.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Exists(ExistsCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            exists
+                .options
+                .clone()
+                .map(|opts| opts.try_into())
+                .transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_touch_command(
@@ -1083,19 +1188,25 @@ fn build_touch_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Touch(TouchCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        expiry,
-        return_result,
-        current_timestamp(),
-        touch
-            .options
-            .clone()
-            .map(|opts| opts.try_into())
-            .transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(touch.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Touch(TouchCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            expiry,
+            return_result,
+            current_timestamp(),
+            touch
+                .options
+                .clone()
+                .map(|opts| opts.try_into())
+                .transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_append_command(
@@ -1120,15 +1231,21 @@ fn build_append_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Append(AppendCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        append.content.clone(),
-        append.options.map(|opts| opts.try_into()).transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(append.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Append(AppendCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            append.content.clone(),
+            append.options.map(|opts| opts.try_into()).transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_prepend_command(
@@ -1153,15 +1270,21 @@ fn build_prepend_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Prepend(PrependCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        prepend.content.clone(),
-        prepend.options.map(|opts| opts.try_into()).transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(prepend.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Prepend(PrependCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            prepend.content.clone(),
+            prepend.options.map(|opts| opts.try_into()).transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_increment_command(
@@ -1186,14 +1309,20 @@ fn build_increment_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Increment(IncrementCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        increment.options.map(|opts| opts.try_into()).transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(increment.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Increment(IncrementCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            increment.options.map(|opts| opts.try_into()).transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn build_decrement_command(
@@ -1218,14 +1347,20 @@ fn build_decrement_command(
         .and_then(|o| o.parent_span_id.as_ref())
         .and_then(|id| span_owner.get(id));
 
-    Ok(SdkCommand::KV(KvCommand::Decrement(DecrementCommand::new(
-        collection,
-        doc_location.id().to_string(),
-        return_result,
-        current_timestamp(),
-        decrement.options.map(|opts| opts.try_into()).transpose()?,
-        parent_span,
-    ))))
+    let timeout_override =
+        timeout_override_millis(decrement.options.as_ref().and_then(|o| o.timeout_msecs))?;
+
+    Ok(SdkCommand::KV(KvCommand::new(
+        KvCommandKind::Decrement(DecrementCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            return_result,
+            current_timestamp(),
+            decrement.options.map(|opts| opts.try_into()).transpose()?,
+            parent_span,
+        )),
+        timeout_override,
+    )))
 }
 
 fn parse_mutate_in_macros(m: i32) -> Result<MutateInMacros> {

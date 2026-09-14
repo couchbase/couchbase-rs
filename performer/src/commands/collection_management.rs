@@ -1,5 +1,5 @@
 use crate::commands::execution::execute_simple;
-use crate::commands::helpers::create_success_sdk_result;
+use crate::commands::helpers::{create_success_sdk_result, duration_from_millis};
 use crate::errors;
 use crate::observability::span_owner::SpanOwner;
 use crate::proto::protocol::sdk::bucket::collection_manager;
@@ -17,6 +17,7 @@ use couchbase::options::collection_mgmt_options::{
 };
 use prost_types::Timestamp;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::Instrument;
 
 #[derive(Clone)]
@@ -26,6 +27,7 @@ pub struct CollectionManagerCommand {
     initiated: Timestamp,
     command_type: CollectionManagerCommandType,
     parent_span: Option<tracing::Span>,
+    timeout_override: Option<Duration>,
 }
 
 #[derive(Clone)]
@@ -72,6 +74,17 @@ impl CollectionManagerCommand {
                 .and_then(|o| o.parent_span_id.as_deref()),
         }
         .and_then(|id| span_owner.get(id));
+
+        let timeout_override = match &command {
+            Command::GetAllScopes(cmd) => cmd.options.as_ref().and_then(|o| o.timeout_msecs),
+            Command::CreateScope(cmd) => cmd.options.as_ref().and_then(|o| o.timeout_msecs),
+            Command::DropScope(cmd) => cmd.options.as_ref().and_then(|o| o.timeout_msecs),
+            Command::CreateCollection(cmd) => cmd.options.as_ref().and_then(|o| o.timeout_msecs),
+            Command::UpdateCollection(cmd) => cmd.options.as_ref().and_then(|o| o.timeout_msecs),
+            Command::DropCollection(cmd) => cmd.options.as_ref().and_then(|o| o.timeout_msecs),
+        }
+        .map(duration_from_millis)
+        .transpose()?;
 
         let command_type =
             match command {
@@ -135,7 +148,14 @@ impl CollectionManagerCommand {
             initiated: Timestamp::default(),
             command_type,
             parent_span,
+            timeout_override,
         })
+    }
+
+    /// The per-operation timeout override, if one was set in the request's own options. This
+    /// takes precedence over the cluster-level default when present.
+    pub fn timeout_override(&self) -> Option<Duration> {
+        self.timeout_override
     }
 
     pub async fn execute(

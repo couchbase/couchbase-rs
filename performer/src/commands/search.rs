@@ -23,6 +23,7 @@ use prost_types::Timestamp;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time;
+use std::time::Duration;
 use tokio::sync::oneshot;
 use tonic::codegen::tokio_stream::StreamExt;
 use tracing::Instrument;
@@ -36,9 +37,11 @@ pub struct SearchCommand {
     content_as: Option<As>,
     stream_config: Config,
     parent_span: Option<tracing::Span>,
+    timeout_override: Option<Duration>,
 }
 
 impl SearchCommand {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         scope: Scope,
         index_name: String,
@@ -48,6 +51,7 @@ impl SearchCommand {
         content_as: Option<As>,
         stream_config: Config,
         parent_span: Option<tracing::Span>,
+        timeout_override: Option<Duration>,
     ) -> Self {
         Self {
             scope,
@@ -58,7 +62,14 @@ impl SearchCommand {
             content_as,
             stream_config,
             parent_span,
+            timeout_override,
         }
+    }
+
+    /// The per-operation timeout override, if one was set in the request's own options. This
+    /// takes precedence over the cluster-level default when present.
+    pub fn timeout_override(&self) -> Option<Duration> {
+        self.timeout_override
     }
 
     pub async fn execute(

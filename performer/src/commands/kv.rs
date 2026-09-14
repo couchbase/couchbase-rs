@@ -9,6 +9,7 @@ use crate::errors::error::Result;
 use crate::proto::protocol::shared::content_as::As;
 use crate::proto::protocol::{run, sdk};
 use couchbase::collection::Collection;
+use couchbase::durability_level::DurabilityLevel;
 use couchbase::options::kv_options::{
     ExistsOptions, GetAndLockOptions, GetAndTouchOptions, GetOptions, InsertOptions, RemoveOptions,
     ReplaceOptions, TouchOptions, UnlockOptions, UpsertOptions,
@@ -18,7 +19,14 @@ use prost_types::Timestamp;
 use std::time::Duration;
 use tracing::{Instrument, Span};
 
-pub enum KvCommand {
+/// A KV command together with the per-operation timeout override taken from its own options,
+/// if one was set. This takes precedence over the cluster-level default when present.
+pub struct KvCommand {
+    kind: KvCommandKind,
+    timeout_override: Option<Duration>,
+}
+
+pub enum KvCommandKind {
     Get(GetCommand),
     Insert(InsertCommand),
     Replace(ReplaceCommand),
@@ -38,24 +46,92 @@ pub enum KvCommand {
 }
 
 impl KvCommand {
+    pub fn new(kind: KvCommandKind, timeout_override: Option<Duration>) -> Self {
+        Self {
+            kind,
+            timeout_override,
+        }
+    }
+
+    pub fn timeout_override(&self) -> Option<Duration> {
+        self.timeout_override
+    }
+
+    pub fn is_durable_write(&self) -> bool {
+        match &self.kind {
+            KvCommandKind::Insert(cmd) => cmd.options.as_ref().is_some_and(|o| {
+                o.durability_level
+                    .as_ref()
+                    .is_some_and(|level| level != &DurabilityLevel::NONE)
+            }),
+            KvCommandKind::Replace(cmd) => cmd.options.as_ref().is_some_and(|o| {
+                o.durability_level
+                    .as_ref()
+                    .is_some_and(|level| level != &DurabilityLevel::NONE)
+            }),
+            KvCommandKind::Upsert(cmd) => cmd.options.as_ref().is_some_and(|o| {
+                o.durability_level
+                    .as_ref()
+                    .is_some_and(|level| level != &DurabilityLevel::NONE)
+            }),
+            KvCommandKind::Remove(cmd) => cmd.options.as_ref().is_some_and(|o| {
+                o.durability_level
+                    .as_ref()
+                    .is_some_and(|level| level != &DurabilityLevel::NONE)
+            }),
+            KvCommandKind::Append(cmd) => cmd.options.as_ref().is_some_and(|o| {
+                o.durability_level
+                    .as_ref()
+                    .is_some_and(|level| level != &DurabilityLevel::NONE)
+            }),
+            KvCommandKind::Prepend(cmd) => cmd.options.as_ref().is_some_and(|o| {
+                o.durability_level
+                    .as_ref()
+                    .is_some_and(|level| level != &DurabilityLevel::NONE)
+            }),
+            KvCommandKind::Increment(cmd) => cmd.options.as_ref().is_some_and(|o| {
+                o.durability_level
+                    .as_ref()
+                    .is_some_and(|level| level != &DurabilityLevel::NONE)
+            }),
+            KvCommandKind::Decrement(cmd) => cmd.options.as_ref().is_some_and(|o| {
+                o.durability_level
+                    .as_ref()
+                    .is_some_and(|level| level != &DurabilityLevel::NONE)
+            }),
+            KvCommandKind::MutateIn(cmd) => cmd.options.as_ref().is_some_and(|o| {
+                o.durability_level
+                    .as_ref()
+                    .is_some_and(|level| level != &DurabilityLevel::NONE)
+            }),
+            KvCommandKind::Get(_)
+            | KvCommandKind::GetAndLock(_)
+            | KvCommandKind::GetAndTouch(_)
+            | KvCommandKind::Unlock(_)
+            | KvCommandKind::Exists(_)
+            | KvCommandKind::Touch(_)
+            | KvCommandKind::LookupIn(_) => false,
+        }
+    }
+
     pub async fn execute(self, batcher: &crate::common::batcher::Batcher) -> Result<bool> {
-        match self {
-            KvCommand::Get(cmd) => cmd.execute(batcher).await,
-            KvCommand::Insert(cmd) => cmd.execute(batcher).await,
-            KvCommand::Replace(cmd) => cmd.execute(batcher).await,
-            KvCommand::Upsert(cmd) => cmd.execute(batcher).await,
-            KvCommand::Remove(cmd) => cmd.execute(batcher).await,
-            KvCommand::GetAndLock(cmd) => cmd.execute(batcher).await,
-            KvCommand::GetAndTouch(cmd) => cmd.execute(batcher).await,
-            KvCommand::Unlock(cmd) => cmd.execute(batcher).await,
-            KvCommand::Exists(cmd) => cmd.execute(batcher).await,
-            KvCommand::Touch(cmd) => cmd.execute(batcher).await,
-            KvCommand::Append(cmd) => cmd.execute(batcher).await,
-            KvCommand::Prepend(cmd) => cmd.execute(batcher).await,
-            KvCommand::Increment(cmd) => cmd.execute(batcher).await,
-            KvCommand::Decrement(cmd) => cmd.execute(batcher).await,
-            KvCommand::LookupIn(cmd) => cmd.execute(batcher).await,
-            KvCommand::MutateIn(cmd) => cmd.execute(batcher).await,
+        match self.kind {
+            KvCommandKind::Get(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::Insert(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::Replace(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::Upsert(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::Remove(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::GetAndLock(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::GetAndTouch(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::Unlock(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::Exists(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::Touch(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::Append(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::Prepend(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::Increment(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::Decrement(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::LookupIn(cmd) => cmd.execute(batcher).await,
+            KvCommandKind::MutateIn(cmd) => cmd.execute(batcher).await,
         }
     }
 }

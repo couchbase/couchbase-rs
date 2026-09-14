@@ -1,4 +1,4 @@
-use crate::commands::helpers::{create_run_result, current_timestamp};
+use crate::commands::helpers::{create_run_result, current_timestamp, duration_from_millis};
 use crate::errors;
 use crate::observability::span_owner::SpanOwner;
 use crate::proto::protocol::sdk::collection::query::index_manager as collection_index_manager;
@@ -17,6 +17,7 @@ use couchbase::options::query_index_mgmt_options::{
 use couchbase::results::query_index_mgmt_results::QueryIndexType;
 use prost_types::Timestamp;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::Instrument;
 
 #[derive(Clone)]
@@ -26,6 +27,7 @@ pub struct QueryIndexManagerCommand {
     initiated: Timestamp,
     command_type: QueryIndexManagerCommandType,
     parent_span: Option<tracing::Span>,
+    timeout_override: Option<Duration>,
 }
 
 #[derive(Clone)]
@@ -74,6 +76,33 @@ impl QueryIndexManagerCommand {
                 }
             })
             .and_then(|id| span_owner.get(id));
+
+        let timeout_override = shared_cmd
+            .command
+            .as_ref()
+            .and_then(|inner| match inner {
+                index_manager::command::Command::GetAllIndexes(c) => {
+                    c.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                index_manager::command::Command::CreatePrimaryIndex(c) => {
+                    c.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                index_manager::command::Command::CreateIndex(c) => {
+                    c.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                index_manager::command::Command::DropPrimaryIndex(c) => {
+                    c.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                index_manager::command::Command::DropIndex(c) => {
+                    c.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+                index_manager::command::Command::WatchIndexes(c) => Some(c.timeout_msecs),
+                index_manager::command::Command::BuildDeferredIndexes(c) => {
+                    c.options.as_ref().and_then(|o| o.timeout_msecs)
+                }
+            })
+            .map(duration_from_millis)
+            .transpose()?;
 
         let command_type = match command {
             Shared(cmd) => match cmd.command.unwrap() {
@@ -137,7 +166,14 @@ impl QueryIndexManagerCommand {
             initiated: current_timestamp(),
             command_type,
             parent_span,
+            timeout_override,
         })
+    }
+
+    /// The per-operation timeout override, if one was set in the request's own options. This
+    /// takes precedence over the cluster-level default when present.
+    pub fn timeout_override(&self) -> Option<Duration> {
+        self.timeout_override
     }
 
     pub async fn execute(
