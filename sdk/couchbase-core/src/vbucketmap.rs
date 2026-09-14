@@ -63,7 +63,7 @@ impl VbucketMap {
 
     pub fn node_by_vbucket(&self, vb_id: u16, vb_server_idx: u32) -> Result<i16> {
         let num_servers = (self.num_replicas as u32) + 1;
-        if vb_server_idx > num_servers {
+        if vb_server_idx >= num_servers {
             return Err(ErrorKind::InvalidReplica {
                 requested_replica: vb_server_idx,
                 num_servers: num_servers as usize,
@@ -89,7 +89,39 @@ impl VbucketMap {
 
 #[cfg(test)]
 mod tests {
+    use crate::error::ErrorKind;
     use crate::vbucketmap::VbucketMap;
+
+    #[test]
+    fn node_by_vbucket_valid_positions() {
+        let vb_map = VbucketMap::new(vec![vec![7, 3, -1]], 2).unwrap();
+
+        assert_eq!(7, vb_map.node_by_vbucket(0, 0).unwrap());
+        assert_eq!(3, vb_map.node_by_vbucket(0, 1).unwrap());
+        assert_eq!(-1, vb_map.node_by_vbucket(0, 2).unwrap());
+    }
+
+    #[test]
+    fn node_by_vbucket_one_past_the_last_replica_is_out_of_bounds() {
+        let vb_map = VbucketMap::new(vec![vec![7, 3, -1]], 2).unwrap();
+
+        let err = vb_map.node_by_vbucket(0, 3).unwrap_err();
+        assert!(matches!(
+            err.kind(),
+            ErrorKind::InvalidReplica {
+                requested_replica: 3,
+                num_servers: 3,
+            }
+        ));
+    }
+
+    #[test]
+    fn node_by_vbucket_well_past_the_last_replica_is_out_of_bounds() {
+        let vb_map = VbucketMap::new(vec![vec![7, 3, -1]], 2).unwrap();
+
+        let err = vb_map.node_by_vbucket(0, 100).unwrap_err();
+        assert!(matches!(err.kind(), ErrorKind::InvalidReplica { .. }));
+    }
 
     #[test]
     fn vbucketmap_with_1024_vbs() {

@@ -30,13 +30,15 @@ use crate::memdx::packet::{RequestPacket, ResponsePacket};
 use crate::memdx::pendingop::StandardPendingOp;
 use crate::memdx::request::{
     AddRequest, AppendRequest, DecrementRequest, DeleteRequest, GetAndLockRequest,
-    GetAndTouchRequest, GetMetaRequest, GetRequest, IncrementRequest, LookupInRequest,
-    MutateInRequest, PrependRequest, ReplaceRequest, SetRequest, TouchRequest, UnlockRequest,
+    GetAndTouchRequest, GetMetaRequest, GetReplicaRequest, GetRequest, IncrementRequest,
+    LookupInRequest, MutateInRequest, PrependRequest, ReplaceRequest, SetRequest, TouchRequest,
+    UnlockRequest,
 };
 use crate::memdx::response::{
     AddResponse, AppendResponse, DecrementResponse, DeleteResponse, GetAndLockResponse,
-    GetAndTouchResponse, GetMetaResponse, GetResponse, IncrementResponse, LookupInResponse,
-    MutateInResponse, PrependResponse, ReplaceResponse, SetResponse, TouchResponse, UnlockResponse,
+    GetAndTouchResponse, GetMetaResponse, GetReplicaResponse, GetResponse, IncrementResponse,
+    LookupInResponse, MutateInResponse, PrependResponse, ReplaceResponse, SetResponse,
+    TouchResponse, UnlockResponse,
 };
 use crate::memdx::status::Status;
 use crate::memdx::subdoc::SubdocRequestInfo;
@@ -128,6 +130,45 @@ impl OpsCrud {
         let packet = RequestPacket {
             magic,
             op_code: OpCode::Get,
+            datatype: 0,
+            vbucket_id: Some(request.vbucket_id),
+            cas: None,
+            extras: None,
+            key: Some(key),
+            value: None,
+            framing_extras,
+            opaque: None,
+        };
+
+        let pending_op = dispatcher.dispatch(packet, false, None).await?;
+
+        Ok(StandardPendingOp::new(pending_op))
+    }
+
+    pub async fn get_replica<D>(
+        &self,
+        dispatcher: &D,
+        request: GetReplicaRequest<'_>,
+    ) -> Result<StandardPendingOp<GetReplicaResponse>>
+    where
+        D: Dispatcher,
+    {
+        let mut ext_frame_buf = [0; 128];
+        let (magic, used) =
+            self.encode_req_ext_frames(None, None, None, request.on_behalf_of, &mut ext_frame_buf)?;
+
+        let buf = &mut [0; 251];
+        let key = self.encode_collection_and_key(request.collection_id, request.key, buf)?;
+
+        let framing_extras = if used > 0 {
+            Some(&ext_frame_buf[..used])
+        } else {
+            None
+        };
+
+        let packet = RequestPacket {
+            magic,
+            op_code: OpCode::GetReplica,
             datatype: 0,
             vbucket_id: Some(request.vbucket_id),
             cas: None,

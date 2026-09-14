@@ -4,8 +4,9 @@ use crate::commands::bucket_management::BucketManagerCommand;
 use crate::commands::collection_management::CollectionManagerCommand;
 use crate::commands::helpers::current_timestamp;
 use crate::commands::kv::{
-    ExistsCommand, GetAndLockCommand, GetAndTouchCommand, GetCommand, InsertCommand, KvCommand,
-    RemoveCommand, ReplaceCommand, TouchCommand, UnlockCommand, UpsertCommand,
+    ExistsCommand, GetAndLockCommand, GetAndTouchCommand, GetCommand, GetReplicaCommand,
+    InsertCommand, KvCommand, RemoveCommand, ReplaceCommand, TouchCommand, UnlockCommand,
+    UpsertCommand,
 };
 use crate::commands::kv_binary::{
     AppendCommand, DecrementCommand, IncrementCommand, PrependCommand,
@@ -28,8 +29,8 @@ use crate::proto::protocol::sdk::kv::mutate_in::content_or_macro::ContentOrMacro
 use crate::proto::protocol::sdk::kv::mutate_in::{mutate_in_spec, MutateIn, MutateInMacro};
 use crate::proto::protocol::sdk::kv::{
     Append, Decrement, Exists, Get, GetAndLock, GetAndLockOptions, GetAndTouch, GetAndTouchOptions,
-    GetOptions, Increment, Insert, InsertOptions, Prepend, Remove, Replace, ReplaceOptions, Touch,
-    Unlock, Upsert, UpsertOptions,
+    GetOptions, GetReplica, GetReplicaOptions, Increment, Insert, InsertOptions, Prepend, Remove,
+    Replace, ReplaceOptions, Touch, Unlock, Upsert, UpsertOptions,
 };
 use crate::proto::protocol::sdk::{
     bucket_level_command, cluster_level_command, collection_level_command, scope_level_command,
@@ -271,6 +272,9 @@ fn build_collection_command(
         }
         collection_level_command::Command::GetAndTouch(get_and_touch) => {
             build_get_and_touch_command(conn, get_and_touch, counters, span_owner, return_result)
+        }
+        collection_level_command::Command::GetReplica(get_replica) => {
+            build_get_replica_command(conn, get_replica, counters, span_owner, return_result)
         }
         collection_level_command::Command::Unlock(unlock) => {
             build_unlock_command(conn, unlock, counters, span_owner, return_result)
@@ -988,6 +992,54 @@ fn build_get_and_touch_command(
     )))
 }
 
+fn build_get_replica_command(
+    conn: Arc<ConnectionSet>,
+    get_replica: GetReplica,
+    counters: Arc<Counters>,
+    span_owner: Arc<SpanOwner>,
+    return_result: bool,
+) -> Result<SdkCommand> {
+    let doc_location = parse_doc_location(&get_replica.location, counters)?;
+    let collection = conn
+        .cluster
+        .bucket(doc_location.bucket())
+        .scope(doc_location.scope())
+        .collection(doc_location.collection_name());
+
+    let strategy = get_replica
+        .strategy
+        .ok_or_else(|| Error::invalid_argument("GetReplica command must have a strategy"))?
+        .try_into()?;
+
+    let transcoder = parse_transcoder(&get_replica.options)?;
+
+    let content_as = get_replica.content_as.and_then(|ca| ca.r#as);
+
+    let parent_span = get_replica
+        .options
+        .as_ref()
+        .and_then(|o| o.parent_span_id.as_ref())
+        .and_then(|id| span_owner.get(id));
+
+    Ok(SdkCommand::KV(KvCommand::GetReplica(
+        GetReplicaCommand::new(
+            collection,
+            doc_location.id().to_string(),
+            strategy,
+            return_result,
+            current_timestamp(),
+            content_as,
+            transcoder,
+            get_replica
+                .options
+                .clone()
+                .map(|opts| opts.try_into())
+                .transpose()?,
+            parent_span,
+        ),
+    )))
+}
+
 fn build_unlock_command(
     conn: Arc<ConnectionSet>,
     unlock: Unlock,
@@ -1281,6 +1333,12 @@ impl HasTranscoder for GetAndLockOptions {
 }
 
 impl HasTranscoder for GetAndTouchOptions {
+    fn transcoder(&self) -> &Option<shared::Transcoder> {
+        &self.transcoder
+    }
+}
+
+impl HasTranscoder for GetReplicaOptions {
     fn transcoder(&self) -> &Option<shared::Transcoder> {
         &self.transcoder
     }

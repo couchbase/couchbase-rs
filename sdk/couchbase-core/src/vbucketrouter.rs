@@ -86,6 +86,8 @@ impl VbucketRouter for StdVbucketRouter {
 
         Err(ErrorKind::NoServerAssigned {
             requested_vb_id: vb_id,
+            vb_server_idx: vbucket_server_idx,
+            num_replicas: vbucket_info.num_replicas(),
         }
         .into())
     }
@@ -95,7 +97,8 @@ impl VbucketRouter for StdVbucketRouter {
         if !info.bucket_selected {
             return Err(ErrorKind::NoBucket.into());
         }
-        let idx = Self::get_vbucket_info(&info)?.node_by_vbucket(vb_id, 0)?;
+        let vbucket_info = Self::get_vbucket_info(&info)?;
+        let idx = vbucket_info.node_by_vbucket(vb_id, 0)?;
 
         if idx > 0 {
             if let Some(server) = info.server_list.get(idx as usize) {
@@ -105,6 +108,8 @@ impl VbucketRouter for StdVbucketRouter {
 
         Err(ErrorKind::NoServerAssigned {
             requested_vb_id: vb_id,
+            vb_server_idx: 0,
+            num_replicas: vbucket_info.num_replicas(),
         }
         .into())
     }
@@ -176,6 +181,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::cbconfig::TerseConfig;
+    use crate::replica_helpers::next_replica_index_to_try;
     use crate::vbucketmap::VbucketMap;
     use crate::vbucketrouter::{
         NotMyVbucketConfigHandler, StdVbucketRouter, VbucketRouter, VbucketRouterOptions,
@@ -186,6 +192,25 @@ mod tests {
 
     impl NotMyVbucketConfigHandler for NVMBHandler {
         async fn not_my_vbucket_config(&self, config: TerseConfig, source_hostname: &str) {}
+    }
+
+    #[test]
+    fn wrap_end_to_end_matches_rfc_worked_example() {
+        let routing_info = VbucketRoutingInfo {
+            vbucket_info: Some(VbucketMap::new(vec![vec![0, 1, 2]], 2).unwrap()),
+            server_list: vec![Arc::from("active"), Arc::from("node7"), Arc::from("node3")],
+            bucket_selected: true,
+        };
+        let router = StdVbucketRouter::new(routing_info, VbucketRouterOptions {});
+
+        let err = router.dispatch_by_key(b"key", 3).unwrap_err();
+
+        let mut hops_left = None;
+        let next = next_replica_index_to_try(&err, 3, &mut hops_left);
+        assert_eq!(Some(1), next, "THIRD should wrap to FIRST, per the RFC");
+
+        let (endpoint, _) = router.dispatch_by_key(b"key", next.unwrap()).unwrap();
+        assert_eq!("node7", &*endpoint);
     }
 
     #[test]

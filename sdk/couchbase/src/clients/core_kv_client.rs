@@ -18,6 +18,7 @@
 
 use crate::clients::couchbase_core_kv_client::CouchbaseCoreKvClient;
 use crate::error;
+use crate::get_replica_strategy::GetReplicaStrategy;
 use crate::options::kv_binary_options::*;
 use crate::options::kv_options::*;
 use crate::results::kv_binary_results::CounterResult;
@@ -132,6 +133,22 @@ impl CoreKvClient {
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
                 client.get(id, options).await
+            }
+        }
+    }
+
+    pub async fn get_replica(
+        &self,
+        id: &str,
+        strategy: GetReplicaStrategy,
+        options: GetReplicaOptions,
+    ) -> error::Result<GetReplicaResult> {
+        match &self.backend {
+            CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
+                client.get_replica(id, strategy, options).await
+            }
+            CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
+                client.get_replica(id, strategy, options).await
             }
         }
     }
@@ -354,6 +371,15 @@ impl Couchbase2CoreKvClient {
     }
 
     pub async fn get(&self, _id: &str, _options: GetOptions) -> error::Result<GetResult> {
+        unimplemented!()
+    }
+
+    pub async fn get_replica(
+        &self,
+        _id: &str,
+        _strategy: GetReplicaStrategy,
+        _options: GetReplicaOptions,
+    ) -> error::Result<GetReplicaResult> {
         unimplemented!()
     }
 

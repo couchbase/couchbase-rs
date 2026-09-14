@@ -32,15 +32,15 @@ use crate::memdx::ops_util::OpsUtil;
 use crate::memdx::request::{
     AddRequest, AppendRequest, DecrementRequest, DeleteRequest, GetAndLockRequest,
     GetAndTouchRequest, GetClusterConfigRequest, GetCollectionIdRequest, GetMetaRequest,
-    GetRequest, IncrementRequest, LookupInRequest, MutateInRequest, PingRequest, PrependRequest,
-    ReplaceRequest, SelectBucketRequest, SetRequest, TouchRequest, UnlockRequest,
+    GetReplicaRequest, GetRequest, IncrementRequest, LookupInRequest, MutateInRequest, PingRequest,
+    PrependRequest, ReplaceRequest, SelectBucketRequest, SetRequest, TouchRequest, UnlockRequest,
 };
 use crate::memdx::response::{
     AddResponse, AppendResponse, BootstrapResult, DecrementResponse, DeleteResponse,
     GetAndLockResponse, GetAndTouchResponse, GetClusterConfigResponse, GetCollectionIdResponse,
-    GetMetaResponse, GetResponse, IncrementResponse, LookupInResponse, MutateInResponse,
-    PingResponse, PrependResponse, ReplaceResponse, SelectBucketResponse, SetResponse,
-    TouchResponse, TraceAttributes, UnlockResponse,
+    GetMetaResponse, GetReplicaResponse, GetResponse, IncrementResponse, LookupInResponse,
+    MutateInResponse, PingResponse, PrependResponse, ReplaceResponse, SelectBucketResponse,
+    SetResponse, TouchResponse, TraceAttributes, UnlockResponse,
 };
 use crate::tracingcomponent::{BeginDispatchFields, EndDispatchFields, OperationId};
 use chrono::Utc;
@@ -62,6 +62,10 @@ pub(crate) trait KvClientOps: Sized + Send + Sync {
     fn bucket_name(&self) -> Option<String>;
     fn set(&self, req: SetRequest) -> impl Future<Output = KvResult<SetResponse>> + Send;
     fn get(&self, req: GetRequest) -> impl Future<Output = KvResult<GetResponse>> + Send;
+    fn get_replica(
+        &self,
+        req: GetReplicaRequest,
+    ) -> impl Future<Output = KvResult<GetReplicaResponse>> + Send;
     fn get_meta(
         &self,
         req: GetMetaRequest,
@@ -147,6 +151,20 @@ where
         self.with_dispatch_span(req, |req| async move {
             let mut op = self
                 .handle_dispatch_side_result(self.ops_crud().get(self.client(), req).await)
+                .await?;
+            let opaque = op.opaque();
+
+            let res = self.handle_response_side_result(op.recv().await).await?;
+            Ok((res, opaque))
+        })
+        .await
+    }
+
+    async fn get_replica(&self, req: GetReplicaRequest<'_>) -> KvResult<GetReplicaResponse> {
+        self.update_last_activity();
+        self.with_dispatch_span(req, |req| async move {
+            let mut op = self
+                .handle_dispatch_side_result(self.ops_crud().get_replica(self.client(), req).await)
                 .await?;
             let opaque = op.opaque();
 

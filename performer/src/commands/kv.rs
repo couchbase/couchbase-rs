@@ -9,11 +9,12 @@ use crate::errors::error::Result;
 use crate::proto::protocol::shared::content_as::As;
 use crate::proto::protocol::{run, sdk};
 use couchbase::collection::Collection;
+use couchbase::get_replica_strategy::GetReplicaStrategy;
 use couchbase::options::kv_options::{
-    ExistsOptions, GetAndLockOptions, GetAndTouchOptions, GetOptions, InsertOptions, RemoveOptions,
-    ReplaceOptions, TouchOptions, UnlockOptions, UpsertOptions,
+    ExistsOptions, GetAndLockOptions, GetAndTouchOptions, GetOptions, GetReplicaOptions,
+    InsertOptions, RemoveOptions, ReplaceOptions, TouchOptions, UnlockOptions, UpsertOptions,
 };
-use couchbase::results::kv_results::GetResult;
+use couchbase::results::kv_results::{GetReplicaResult, GetResult};
 use prost_types::Timestamp;
 use std::time::Duration;
 use tracing::{Instrument, Span};
@@ -26,6 +27,7 @@ pub enum KvCommand {
     Remove(RemoveCommand),
     GetAndLock(GetAndLockCommand),
     GetAndTouch(GetAndTouchCommand),
+    GetReplica(GetReplicaCommand),
     Unlock(UnlockCommand),
     Exists(ExistsCommand),
     Touch(TouchCommand),
@@ -47,6 +49,7 @@ impl KvCommand {
             KvCommand::Remove(cmd) => cmd.execute(batcher).await,
             KvCommand::GetAndLock(cmd) => cmd.execute(batcher).await,
             KvCommand::GetAndTouch(cmd) => cmd.execute(batcher).await,
+            KvCommand::GetReplica(cmd) => cmd.execute(batcher).await,
             KvCommand::Unlock(cmd) => cmd.execute(batcher).await,
             KvCommand::Exists(cmd) => cmd.execute(batcher).await,
             KvCommand::Touch(cmd) => cmd.execute(batcher).await,
@@ -393,6 +396,66 @@ impl GetAndTouchCommand {
     }
 }
 
+pub struct GetReplicaCommand {
+    collection: Collection,
+    doc_id: String,
+    strategy: GetReplicaStrategy,
+    return_result: bool,
+    initiated: Timestamp,
+    content_as: Option<As>,
+    transcoder: Option<Transcoder>,
+    options: Option<GetReplicaOptions>,
+    parent_span: Option<Span>,
+}
+
+impl GetReplicaCommand {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        cb: Collection,
+        doc_id: String,
+        strategy: GetReplicaStrategy,
+        return_result: bool,
+        initiated: Timestamp,
+        content_as: Option<As>,
+        transcoder: Option<Transcoder>,
+        options: Option<GetReplicaOptions>,
+        parent_span: Option<Span>,
+    ) -> Self {
+        GetReplicaCommand {
+            collection: cb,
+            doc_id,
+            strategy,
+            return_result,
+            initiated,
+            content_as,
+            transcoder,
+            options,
+            parent_span,
+        }
+    }
+
+    pub async fn execute(self, batcher: &crate::common::batcher::Batcher) -> Result<bool> {
+        let fut = execute_simple(
+            self.initiated,
+            batcher,
+            self.return_result,
+            self.collection
+                .get_replica(&self.doc_id, self.strategy.clone(), self.options.clone()),
+            |res| {
+                run_result_from_get_replica_result(
+                    &self.content_as.unwrap(),
+                    &self.transcoder,
+                    &res,
+                )
+            },
+        );
+        match self.parent_span {
+            Some(span) => fut.instrument(span).await,
+            None => fut.await,
+        }
+    }
+}
+
 pub struct TouchCommand {
     collection: Collection,
     doc_id: String,
@@ -541,6 +604,26 @@ fn run_result_from_get_result(
             content: Some(parse_content_as(content_as, transcoder, res)?),
             expiry_time: res.expiry_time().map(|ex| ex.timestamp()),
         })),
+    }))
+}
+
+fn run_result_from_get_replica_result(
+    content_as: &As,
+    transcoder: &Option<Transcoder>,
+    res: &GetReplicaResult,
+) -> Result<run::result::Result> {
+    Ok(run::result::Result::Sdk(sdk::Result {
+        result: Some(sdk::result::Result::GetReplicaResult(
+            sdk::kv::GetReplicaResult {
+                cas: res.cas() as i64,
+                content: Some(parse_content_as(content_as, transcoder, res)?),
+                is_replica: res.is_replica(),
+                // Not part of the SDK response (GetReplicaResult has no expiry accessor);
+                // stream_id is only meaningful for the (unimplemented) getAllReplicas stream.
+                expiry_time: None,
+                stream_id: None,
+            },
+        )),
     }))
 }
 
