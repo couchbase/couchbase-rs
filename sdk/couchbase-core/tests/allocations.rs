@@ -181,9 +181,9 @@ fn get() {
             .retry_strategy(Arc::new(FailFastRetryStrategy::default()));
 
         let expected_allocs: u64 = if agent.test_setup_config.use_ssl {
-            14
+            13
         } else {
-            12
+            11
         };
 
         ensure_agent_ready(&agent).await;
@@ -230,8 +230,9 @@ where
 
     let total_allocs = stats2.total_blocks - stats1.total_blocks;
 
-    dhat::assert!(
-        total_allocs <= expected_allocs,
+    dhat::assert_eq!(
+        total_allocs,
+        expected_allocs,
         "Expected max {} allocations, was {}",
         expected_allocs,
         total_allocs

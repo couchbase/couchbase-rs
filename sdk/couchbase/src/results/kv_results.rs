@@ -49,7 +49,7 @@ use serde::de::DeserializeOwned;
 /// ```
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct GetResult {
-    pub(crate) content: Vec<u8>,
+    pub(crate) content: Bytes,
     pub(crate) flags: u32,
     pub(crate) cas: u64,
     pub(crate) expiry_time: Option<DateTime<Utc>>,
