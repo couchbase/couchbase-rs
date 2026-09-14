@@ -13,11 +13,6 @@ impl TryFrom<LookupInOptions> for couchbase::options::kv_options::LookupInOption
             copts = copts.access_deleted(access_deleted);
         }
 
-        if let Some(_timeout) = opts.timeout_millis {
-            // TODO: Should we wrap operations in a performer timeout to simulate user behaviour?
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
-
         Ok(copts)
     }
 }
@@ -67,11 +62,6 @@ impl TryFrom<MutateInOptions> for couchbase::options::kv_options::MutateInOption
 
         if let Some(_create_as_deleted) = opts.create_as_deleted {
             return Err(Error::unimplemented("create_as_deleted is unimplemented"));
-        }
-
-        if let Some(_timeout) = opts.timeout_millis {
-            // TODO: Should we wrap operations in a performer timeout to simulate user behaviour?
-            return Err(Error::unimplemented("timeout is unimplemented"));
         }
 
         Ok(copts)
