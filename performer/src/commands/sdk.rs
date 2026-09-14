@@ -141,9 +141,10 @@ where
 {
     match timeout(duration, fut).await {
         Ok(res) => res,
-        Err(_) => Err(Box::new(Error::Status(tonic::Status::deadline_exceeded(
-            "operation timed out",
-        )))),
+        // Temporarily returning ambigious_timeout until RSCBC-306 is resolved
+        Err(_) => Err(Error::ambiguous_timeout(format!(
+            "operation did not complete within performer-configured timeout of {duration:?}"
+        ))),
     }
 }
 

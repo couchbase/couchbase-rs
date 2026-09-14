@@ -1,4 +1,5 @@
-use crate::proto::protocol::run;
+use crate::proto::protocol::shared::{CouchbaseExceptionEx, CouchbaseExceptionType};
+use crate::proto::protocol::{run, sdk, shared};
 use crate::translations::common::sdk_error_to_proto_run_result;
 use std::fmt;
 
@@ -28,6 +29,30 @@ impl Error {
             elapsed_nanos: 0,
             initiated: None,
             result: Some(sdk_error_to_proto_run_result(err)),
+        })))
+    }
+
+    // TEMPORARY:
+    // timeouts are enforced by the performer wrapping calls in `tokio::time::timeout`, so this isn't
+    // really an exception the SDK itself raised. Until we have a proper special-case exception
+    // type for this (RSCBC-306), map it onto AmbiguousTimeoutException so FIT can at least see
+    // a timeout, rather than a  GRPC deadline-exceeded status.
+    pub fn ambiguous_timeout(msg: impl Into<String>) -> Box<Self> {
+        Box::new(Error::Sdk(Box::new(run::Result {
+            elapsed_nanos: 0,
+            initiated: None,
+            result: Some(run::result::Result::Sdk(sdk::Result {
+                result: Some(sdk::result::Result::Exception(shared::Exception {
+                    exception: Some(shared::exception::Exception::Couchbase(Box::new(
+                        CouchbaseExceptionEx {
+                            name: "AmbiguousTimeoutException".to_string(),
+                            r#type: CouchbaseExceptionType::SdkAmbiguousTimeoutException as i32,
+                            cause: None,
+                            serialized: msg.into(),
+                        },
+                    ))),
+                })),
+            })),
         })))
     }
 
