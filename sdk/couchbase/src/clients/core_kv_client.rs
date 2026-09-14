@@ -72,10 +72,10 @@ impl CoreKvClient {
     ) -> error::Result<MutationResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.upsert(id, value, flags, options).await
+                Box::pin(client.upsert(id, value, flags, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.upsert(id, value, flags, options).await
+                Box::pin(client.upsert(id, value, flags, options)).await
             }
         }
     }
@@ -89,10 +89,10 @@ impl CoreKvClient {
     ) -> error::Result<MutationResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.insert(id, value, flags, options).await
+                Box::pin(client.insert(id, value, flags, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.insert(id, value, flags, options).await
+                Box::pin(client.insert(id, value, flags, options)).await
             }
         }
     }
@@ -106,10 +106,10 @@ impl CoreKvClient {
     ) -> error::Result<MutationResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.replace(id, value, flags, options).await
+                Box::pin(client.replace(id, value, flags, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.replace(id, value, flags, options).await
+                Box::pin(client.replace(id, value, flags, options)).await
             }
         }
     }
@@ -117,10 +117,10 @@ impl CoreKvClient {
     pub async fn remove(&self, id: &str, options: RemoveOptions) -> error::Result<MutationResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.remove(id, options).await
+                Box::pin(client.remove(id, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.remove(id, options).await
+                Box::pin(client.remove(id, options)).await
             }
         }
     }
@@ -128,10 +128,10 @@ impl CoreKvClient {
     pub async fn get(&self, id: &str, options: GetOptions) -> error::Result<GetResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.get(id, options).await
+                Box::pin(client.get(id, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.get(id, options).await
+                Box::pin(client.get(id, options)).await
             }
         }
     }
@@ -139,10 +139,10 @@ impl CoreKvClient {
     pub async fn exists(&self, id: &str, options: ExistsOptions) -> error::Result<ExistsResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.exists(id, options).await
+                Box::pin(client.exists(id, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.exists(id, options).await
+                Box::pin(client.exists(id, options)).await
             }
         }
     }
@@ -155,10 +155,10 @@ impl CoreKvClient {
     ) -> error::Result<GetResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.get_and_touch(id, expiry, options).await
+                Box::pin(client.get_and_touch(id, expiry, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.get_and_touch(id, expiry, options).await
+                Box::pin(client.get_and_touch(id, expiry, options)).await
             }
         }
     }
@@ -171,10 +171,10 @@ impl CoreKvClient {
     ) -> error::Result<GetResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.get_and_lock(id, lock_time, options).await
+                Box::pin(client.get_and_lock(id, lock_time, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.get_and_lock(id, lock_time, options).await
+                Box::pin(client.get_and_lock(id, lock_time, options)).await
             }
         }
     }
@@ -182,10 +182,10 @@ impl CoreKvClient {
     pub async fn unlock(&self, id: &str, cas: u64, options: UnlockOptions) -> error::Result<()> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.unlock(id, cas, options).await
+                Box::pin(client.unlock(id, cas, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.unlock(id, cas, options).await
+                Box::pin(client.unlock(id, cas, options)).await
             }
         }
     }
@@ -198,10 +198,10 @@ impl CoreKvClient {
     ) -> error::Result<TouchResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.touch(id, expiry, options).await
+                Box::pin(client.touch(id, expiry, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.touch(id, expiry, options).await
+                Box::pin(client.touch(id, expiry, options)).await
             }
         }
     }
@@ -214,10 +214,10 @@ impl CoreKvClient {
     ) -> error::Result<MutationResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.append(id, value, options).await
+                Box::pin(client.append(id, value, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.append(id, value, options).await
+                Box::pin(client.append(id, value, options)).await
             }
         }
     }
@@ -230,10 +230,10 @@ impl CoreKvClient {
     ) -> error::Result<MutationResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.prepend(id, value, options).await
+                Box::pin(client.prepend(id, value, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.prepend(id, value, options).await
+                Box::pin(client.prepend(id, value, options)).await
             }
         }
     }
@@ -245,10 +245,10 @@ impl CoreKvClient {
     ) -> error::Result<CounterResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.increment(id, options).await
+                Box::pin(client.increment(id, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.increment(id, options).await
+                Box::pin(client.increment(id, options)).await
             }
         }
     }
@@ -260,10 +260,10 @@ impl CoreKvClient {
     ) -> error::Result<CounterResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.decrement(id, options).await
+                Box::pin(client.decrement(id, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.decrement(id, options).await
+                Box::pin(client.decrement(id, options)).await
             }
         }
     }
@@ -276,10 +276,10 @@ impl CoreKvClient {
     ) -> error::Result<LookupInResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.lookup_in(id, specs, options).await
+                Box::pin(client.lookup_in(id, specs, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.lookup_in(id, specs, options).await
+                Box::pin(client.lookup_in(id, specs, options)).await
             }
         }
     }
@@ -292,10 +292,10 @@ impl CoreKvClient {
     ) -> error::Result<MutateInResult> {
         match &self.backend {
             CoreKvClientBackend::CouchbaseCoreKvClientBackend(client) => {
-                client.mutate_in(id, specs, options).await
+                Box::pin(client.mutate_in(id, specs, options)).await
             }
             CoreKvClientBackend::Couchbase2CoreKvClientBackend(client) => {
-                client.mutate_in(id, specs, options).await
+                Box::pin(client.mutate_in(id, specs, options)).await
             }
         }
     }

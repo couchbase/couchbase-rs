@@ -23,7 +23,6 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use arc_swap::ArcSwap;
-use async_trait::async_trait;
 use bytes::Bytes;
 use futures::future::err;
 use futures::{FutureExt, Stream, StreamExt, TryStreamExt};
