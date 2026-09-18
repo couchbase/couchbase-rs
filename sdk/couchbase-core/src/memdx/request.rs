@@ -230,6 +230,30 @@ impl<'a> GetRequest<'a> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct GetReplicaRequest<'a> {
+    pub(crate) collection_id: u32,
+    pub(crate) key: &'a [u8],
+    pub(crate) vbucket_id: u16,
+    pub(crate) on_behalf_of: Option<&'a str>,
+}
+
+impl<'a> GetReplicaRequest<'a> {
+    pub fn new(collection_id: u32, key: &'a [u8], vbucket_id: u16) -> Self {
+        Self {
+            collection_id,
+            key,
+            vbucket_id,
+            on_behalf_of: None,
+        }
+    }
+
+    pub fn on_behalf_of(mut self, on_behalf_of: &'a str) -> Self {
+        self.on_behalf_of = Some(on_behalf_of);
+        self
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct GetMetaRequest<'a> {
     pub(crate) collection_id: u32,
     pub(crate) key: &'a [u8],

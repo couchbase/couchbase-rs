@@ -3,7 +3,7 @@ use crate::proto::protocol::shared;
 use crate::proto::protocol::shared::content::Content;
 use crate::proto::protocol::shared::content_as::As;
 use crate::proto::protocol::shared::ContentTypes;
-use couchbase::results::kv_results::GetResult;
+use couchbase::results::kv_results::{GetReplicaResult, GetResult};
 use couchbase::transcoding::{json, raw_binary, raw_json, raw_string};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -37,6 +37,16 @@ pub trait ContentDecoder {
 }
 
 impl ContentDecoder for GetResult {
+    fn content_as<V: DeserializeOwned>(&self) -> couchbase::error::Result<V> {
+        self.content_as::<V>()
+    }
+
+    fn content_as_raw(&self) -> (&[u8], u32) {
+        self.content_as_raw()
+    }
+}
+
+impl ContentDecoder for GetReplicaResult {
     fn content_as<V: DeserializeOwned>(&self) -> couchbase::error::Result<V> {
         self.content_as::<V>()
     }

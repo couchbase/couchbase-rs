@@ -65,6 +65,7 @@ pub mod orphan_reporter;
 mod parsedconfig;
 pub mod querycomponent;
 pub mod queryx;
+mod replica_helpers;
 pub mod results;
 pub mod retry;
 pub mod retryfailfast;

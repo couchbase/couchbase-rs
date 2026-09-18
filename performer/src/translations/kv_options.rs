@@ -1,10 +1,17 @@
 use crate::errors::error::{Error, Result};
+use crate::proto::protocol::sdk::kv::replicas::{
+    get_replica_strategy, GetReplicaStrategy as ProtoGetReplicaStrategy,
+    ReplicaIndex as ProtoReplicaIndex,
+};
 use crate::proto::protocol::sdk::kv::{
     AppendOptions, DecrementOptions, ExistsOptions, GetAndLockOptions, GetAndTouchOptions,
-    GetOptions, IncrementOptions, InsertOptions, PrependOptions, RemoveOptions, ReplaceOptions,
-    TouchOptions, UnlockOptions, UpsertOptions,
+    GetOptions, GetReplicaOptions, IncrementOptions, InsertOptions, PrependOptions, RemoveOptions,
+    ReplaceOptions, TouchOptions, UnlockOptions, UpsertOptions,
 };
 use couchbase::durability_level::DurabilityLevel;
+use couchbase::get_replica_strategy::{
+    GetReplicaStrategy, GetReplicaStrategyFromIndexOptions, ReplicaIndex,
+};
 
 // Note: `timeout_msecs` on these options is not converted into the SDK-native options here.
 // It's applied as an override on the overall operation deadline instead - see
@@ -121,6 +128,48 @@ impl TryFrom<GetAndTouchOptions> for couchbase::options::kv_options::GetAndTouch
 
     fn try_from(_proto: GetAndTouchOptions) -> Result<Self> {
         Ok(couchbase::options::kv_options::GetAndTouchOptions::new())
+    }
+}
+
+impl TryFrom<GetReplicaOptions> for couchbase::options::kv_options::GetReplicaOptions {
+    type Error = Box<Error>;
+
+    fn try_from(proto: GetReplicaOptions) -> Result<Self> {
+        let options = couchbase::options::kv_options::GetReplicaOptions::new();
+
+        if let Some(_timeout) = proto.timeout_msecs {
+            return Err(Error::unimplemented("timeout is unimplemented"));
+        }
+
+        Ok(options)
+    }
+}
+
+impl TryFrom<ProtoGetReplicaStrategy> for GetReplicaStrategy {
+    type Error = Box<Error>;
+
+    fn try_from(proto: ProtoGetReplicaStrategy) -> Result<Self> {
+        match proto.strategy {
+            Some(get_replica_strategy::Strategy::FromIndex(from_index)) => {
+                let index = match ProtoReplicaIndex::try_from(from_index.index) {
+                    Ok(ProtoReplicaIndex::First) => ReplicaIndex::First,
+                    Ok(ProtoReplicaIndex::Second) => ReplicaIndex::Second,
+                    Ok(ProtoReplicaIndex::Third) => ReplicaIndex::Third,
+                    Err(_) => {
+                        return Err(Error::invalid_argument("Invalid replica index specified"));
+                    }
+                };
+
+                let options = from_index.options.map(|opts| {
+                    GetReplicaStrategyFromIndexOptions::new().wrap(opts.wrap.unwrap_or(false))
+                });
+
+                Ok(GetReplicaStrategy::from_index(index, options))
+            }
+            None => Err(Error::invalid_argument(
+                "GetReplicaStrategy must have a strategy",
+            )),
+        }
     }
 }
 
