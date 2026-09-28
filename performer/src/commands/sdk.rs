@@ -142,9 +142,7 @@ where
 {
     match timeout(duration, fut).await {
         Ok(res) => res,
-        Err(_) => Err(Box::new(Error::Status(tonic::Status::deadline_exceeded(
-            "operation timed out",
-        )))),
+        Err(_) => Err(Error::timeout("operation timed out")),
     }
 }
 

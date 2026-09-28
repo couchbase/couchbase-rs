@@ -134,14 +134,8 @@ impl TryFrom<GetAndTouchOptions> for couchbase::options::kv_options::GetAndTouch
 impl TryFrom<GetReplicaOptions> for couchbase::options::kv_options::GetReplicaOptions {
     type Error = Box<Error>;
 
-    fn try_from(proto: GetReplicaOptions) -> Result<Self> {
-        let options = couchbase::options::kv_options::GetReplicaOptions::new();
-
-        if let Some(_timeout) = proto.timeout_msecs {
-            return Err(Error::unimplemented("timeout is unimplemented"));
-        }
-
-        Ok(options)
+    fn try_from(_proto: GetReplicaOptions) -> Result<Self> {
+        Ok(couchbase::options::kv_options::GetReplicaOptions::new())
     }
 }
 
