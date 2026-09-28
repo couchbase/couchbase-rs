@@ -1,4 +1,4 @@
-use crate::proto::protocol::run;
+use crate::proto::protocol::{run, sdk, shared};
 use crate::translations::common::sdk_error_to_proto_run_result;
 use std::fmt;
 
@@ -28,6 +28,27 @@ impl Error {
             elapsed_nanos: 0,
             initiated: None,
             result: Some(sdk_error_to_proto_run_result(err)),
+        })))
+    }
+
+    pub fn timeout(msg: impl Into<String>) -> Box<Self> {
+        Box::new(Error::Sdk(Box::new(run::Result {
+            elapsed_nanos: 0,
+            initiated: None,
+            result: Some(run::result::Result::Sdk(sdk::Result {
+                result: Some(sdk::result::Result::Exception(shared::Exception {
+                    exception: Some(shared::exception::Exception::Special(
+                        shared::ExceptionSpecial {
+                            special: Some(shared::exception_special::Special::Timeout(
+                                shared::PlatformTimeoutEx {
+                                    name: "RustTimeoutException".to_string(),
+                                    serialized: msg.into(),
+                                },
+                            )),
+                        },
+                    )),
+                })),
+            })),
         })))
     }
 

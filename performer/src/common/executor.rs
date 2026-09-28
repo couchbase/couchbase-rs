@@ -38,7 +38,7 @@ impl Executor {
         command: sdk::Command,
         batcher: &Batcher,
     ) -> Result<bool> {
-        match build_sdk_command(
+        let result = match build_sdk_command(
             self.conn.clone(),
             command,
             self.counters.clone(),
@@ -53,9 +53,15 @@ impl Executor {
                 )
                 .await
             }
+            Err(e) => Err(e),
+        };
+
+        match result {
+            Ok(success) => Ok(success),
+            // Non-standard errors, i.e. timeouts are reported to the driver as a normal result
             Err(e) => match *e {
-                Error::Sdk(e) => {
-                    batcher.send(*e).await;
+                Error::Sdk(result) => {
+                    batcher.send(*result).await;
                     Ok(false)
                 }
                 _ => Err(e),
