@@ -29,7 +29,6 @@ use crate::memdx::error::{CancellationErrorKind, ServerError, ServerErrorKind};
 use crate::retryfailfast::FailFastRetryStrategy;
 use crate::tracingcomponent::SPAN_ATTRIB_RETRIES;
 use crate::{analyticsx, error, httpx, mgmtx, queryx, searchx};
-use async_trait::async_trait;
 use tokio::time::sleep;
 use tracing::{debug, info};
 

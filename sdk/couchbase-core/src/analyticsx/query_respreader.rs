@@ -34,7 +34,6 @@ use crate::httpx::decoder::Decoder;
 use crate::httpx::raw_json_row_streamer::{RawJsonRowItem, RawJsonRowStreamer};
 use crate::httpx::response::Response;
 use arc_swap::ArcSwap;
-use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{FutureExt, Stream, StreamExt, TryStreamExt};
 use http::StatusCode;

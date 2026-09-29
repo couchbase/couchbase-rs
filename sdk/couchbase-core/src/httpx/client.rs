@@ -22,20 +22,19 @@ use crate::httpx::request::{Auth, OboPasswordOrDomain, Request};
 use crate::httpx::response::Response;
 use crate::tls_config::TlsConfig;
 use arc_swap::ArcSwap;
-use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use http::header::{CONTENT_TYPE, USER_AGENT};
 use reqwest::redirect::Policy;
 use std::error::Error as StdError;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, trace};
 use uuid::Uuid;
 
-#[async_trait]
 pub trait Client: Send + Sync {
-    async fn execute(&self, req: Request) -> HttpxResult<Response>;
+    fn execute(&self, req: Request) -> impl Future<Output = HttpxResult<Response>> + Send;
 }
 
 #[derive(Clone, Debug, Default)]
@@ -167,7 +166,6 @@ impl ReqwestClient {
     }
 }
 
-#[async_trait]
 impl Client for ReqwestClient {
     async fn execute(&self, req: Request) -> HttpxResult<Response> {
         let inner = self.inner.load();
