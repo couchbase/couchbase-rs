@@ -19,6 +19,7 @@
 use crate::httpx::client::Client;
 use crate::httpx::request::{Auth, BasicAuth, OnBehalfOfInfo, Request};
 use crate::httpx::response::Response;
+use crate::log_redaction::{metadata, not_sensitive};
 use crate::queryx::error;
 use crate::queryx::error::{Error, ErrorKind, ServerError, ServerErrorKind};
 use crate::queryx::index::Index;
@@ -696,7 +697,9 @@ fn check_indexes_active(indexes: &[Index], check_list: &Vec<&str>) -> error::Res
         if index.state != "online" {
             debug!(
                 "Index {} is not ready yet, current state is {}",
-                index.name, index.state
+                metadata(&index.name),
+                // An index state such as "online" or "deferred".
+                not_sensitive(&index.state)
             );
             return Ok(false);
         }

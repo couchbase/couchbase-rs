@@ -52,6 +52,7 @@ mod kvclient_babysitter;
 mod kvclient_ops;
 mod kvclientpool;
 mod kvendpointclientmanager;
+pub mod log_redaction;
 pub mod memdx;
 pub mod mgmtcomponent;
 pub mod mgmtx;

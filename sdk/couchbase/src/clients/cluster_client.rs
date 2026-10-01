@@ -35,6 +35,7 @@ use crate::options::cluster_options::{ClusterOptions, TlsOptions};
 use crate::retry::RetryStrategy;
 use couchbase_connstr::{parse, resolve, Address, SrvRecord};
 use couchbase_core::address;
+use couchbase_core::log_redaction::system_data;
 use couchbase_core::ondemand_agentmanager::OnDemandAgentManager;
 use couchbase_core::options::agent::{CompressionConfig, ReconfigureAgentOptions, SeedConfig};
 use couchbase_core::options::ondemand_agentmanager::OnDemandAgentManagerOptions;
@@ -44,6 +45,7 @@ use couchbase_core::retrybesteffort::BestEffortRetryStrategy;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::debug;
 
 use crate::authenticator::Authenticator;
 use crate::clients::tracing_client::{CouchbaseTracingClient, TracingClient, TracingClientBackend};
@@ -75,6 +77,10 @@ impl ClusterClient {
         };
         #[cfg(not(feature = "dns-srv"))]
         let resolved_conn_spec = resolve(conn_spec).await?;
+
+        if let Some(e) = &resolved_conn_spec.srv_lookup_error {
+            debug!("Srv lookup failed {}", system_data(e));
+        }
 
         let backend = if let Some(host) = resolved_conn_spec.couchbase2_host {
             ClusterClientBackend::Couchbase2ClusterBackend(
@@ -300,7 +306,8 @@ impl CouchbaseClusterBackend {
                     opts.tcp_keep_alive_time
                         .unwrap_or_else(|| Duration::from_secs(60)),
                 )
-                .orphan_reporter_handler(orphan_handler);
+                .orphan_reporter_handler(orphan_handler)
+                .log_redaction(opts.log_redaction.unwrap_or(false));
 
         Self::merge_options(&mut core_opts, extra_opts)?;
 

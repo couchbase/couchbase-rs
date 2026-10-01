@@ -27,6 +27,7 @@ use crate::tracing::{
     SPAN_ATTRIB_OPERATION_ID_KEY, SPAN_ATTRIB_OPERATION_KEY, SPAN_ATTRIB_SERVER_DURATION_KEY,
     SPAN_ATTRIB_SERVICE_KEY, SPAN_NAME_DISPATCH_TO_SERVER, SPAN_NAME_REQUEST_ENCODING,
 };
+use couchbase_core::log_redaction::user_data;
 
 const COUCHBASE_TARGET_PREFIX: &str = "couchbase::tracing";
 
@@ -336,8 +337,12 @@ impl ThresholdLoggingTracer {
 
         if !log_output.is_empty() {
             match serde_json::to_string(&log_output) {
+                // Tagged as one span around the whole report rather than per value, so that the
+                // report stays parseable JSON. It carries the remote socket, and the operation id,
+                // which for a query is the client context id the application may have chosen, so
+                // the report takes the strictest category: user data.
                 Ok(log_output_str) => {
-                    tracing::warn!("Operations over threshold: {}", log_output_str)
+                    tracing::warn!("Operations over threshold: {}", user_data(&log_output_str))
                 }
                 Err(_) => tracing::error!("Failed to serialize threshold log output"),
             }

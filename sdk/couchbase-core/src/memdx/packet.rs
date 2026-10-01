@@ -55,6 +55,38 @@ impl ResponsePacket {
             framing_extras: None,
         }
     }
+
+    /// The header of this packet without its body, for log lines that report an unexpected
+    /// packet. The body may carry document keys and values, or a bucket name and cluster config,
+    /// so it is never logged. The header is what identifies the anomaly and holds only protocol
+    /// values, so it needs no redaction tag.
+    pub(crate) fn header(&self) -> ResponsePacketHeader<'_> {
+        ResponsePacketHeader(self)
+    }
+}
+
+/// Renders the header fields of a [`ResponsePacket`], and the lengths of its body fields in place
+/// of their contents. Created by [`ResponsePacket::header`].
+pub(crate) struct ResponsePacketHeader<'a>(&'a ResponsePacket);
+
+impl Debug for ResponsePacketHeader<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let packet = self.0;
+        let len = |b: &Option<Bytes>| b.as_ref().map_or(0, |b| b.len());
+        f.debug_struct("ResponsePacket")
+            .field("magic", &packet.magic)
+            .field("op_code", &packet.op_code)
+            .field("datatype", &packet.datatype)
+            .field("status", &packet.status)
+            .field("opaque", &packet.opaque)
+            .field("vbucket_id", &packet.vbucket_id)
+            .field("cas", &packet.cas)
+            .field("framing_extras_len", &len(&packet.framing_extras))
+            .field("extras_len", &len(&packet.extras))
+            .field("key_len", &len(&packet.key))
+            .field("value_len", &len(&packet.value))
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -135,5 +167,24 @@ impl<'a> RequestPacket<'a> {
     pub fn opaque(mut self, opaque: u32) -> Self {
         self.opaque = Some(opaque);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_packet_header_never_renders_the_key_or_value() {
+        let mut packet = ResponsePacket::new(Magic::ServerReq, OpCode::Set, 0, Status::Success, 7);
+        packet.key = Some(Bytes::from_static(b"travel-sample"));
+        packet.value = Some(Bytes::from_static(b"{\"nodes\":[\"10.0.0.1\"]}"));
+
+        let rendered = format!("{:?}", packet.header());
+        assert!(rendered.contains("opaque: 7"), "{rendered}");
+        assert!(rendered.contains("key_len: 13"), "{rendered}");
+        assert!(rendered.contains("value_len: 22"), "{rendered}");
+        assert!(!rendered.contains("travel-sample"), "{rendered}");
+        assert!(!rendered.contains("10.0.0.1"), "{rendered}");
     }
 }

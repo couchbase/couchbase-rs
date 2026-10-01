@@ -25,6 +25,7 @@ use crate::collection_resolver_cached::{
 };
 use crate::collection_resolver_memd::{CollectionResolverMemd, CollectionResolverMemdOptions};
 use crate::compressionmanager::{CompressionManager, StdCompressor};
+use crate::configfetcher::DEBUG_CONFIG_ENV_VAR;
 use crate::configmanager::{
     ConfigManager, ConfigManagerMemd, ConfigManagerMemdConfig, ConfigManagerMemdOptions,
 };
@@ -41,6 +42,7 @@ use crate::kvclient::{
 };
 use crate::kvclient_ops::KvClientOps;
 use crate::kvclientpool::{KvClientPool, KvClientPoolOptions, StdKvClientPool};
+use crate::log_redaction::{self, metadata, not_sensitive, system_data, user_data};
 use crate::memdx::client::Client;
 use crate::memdx::opcode::OpCode;
 use crate::memdx::packet::ResponsePacket;
@@ -64,6 +66,7 @@ use crate::{httpx, mgmtx};
 
 use byteorder::BigEndian;
 use futures::executor::block_on;
+use std::env;
 use std::env::consts::{ARCH, OS};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -188,7 +191,11 @@ impl AgentInner {
         if packet.op_code == OpCode::Set {
             if let Some(ref extras) = packet.extras {
                 if extras.len() < 16 {
-                    warn!("Received Set packet with too short extras: {packet:?}");
+                    warn!(
+                        "Received Set packet with too short extras: {:?}",
+                        // Protocol fields and body lengths, never the body.
+                        not_sensitive(&packet.header())
+                    );
                     return;
                 }
 
@@ -204,7 +211,11 @@ impl AgentInner {
                     self.apply_config(config).await;
                 }
             } else {
-                warn!("Received Set packet with no extras: {packet:?}");
+                warn!(
+                    "Received Set packet with no extras: {:?}",
+                    // Protocol fields and body lengths, never the body.
+                    not_sensitive(&packet.header())
+                );
             }
         }
     }
@@ -223,7 +234,7 @@ impl AgentInner {
     }
 
     async fn update_state_locked(&self, state: &mut AgentState) {
-        debug!("Agent updating state {}", state);
+        debug!("Agent updating state {}", metadata(state));
 
         let agent_component_configs = Self::gen_agent_component_configs_locked(state);
 
@@ -239,7 +250,10 @@ impl AgentInner {
             .update_endpoints(agent_component_configs.kv_targets.clone(), true)
             .await
         {
-            error!("Failed to reconfigure connection manager (add-only); {e}");
+            error!(
+                "Failed to reconfigure connection manager (add-only); {}",
+                user_data(&e)
+            );
         };
 
         self.vb_router
@@ -249,7 +263,10 @@ impl AgentInner {
             .cfg_manager
             .reconfigure(agent_component_configs.config_manager_memd_config)
         {
-            error!("Failed to reconfigure memd config watcher component; {e}");
+            error!(
+                "Failed to reconfigure memd config watcher component; {}",
+                user_data(&e)
+            );
         }
 
         if let Err(e) = self
@@ -257,7 +274,10 @@ impl AgentInner {
             .update_endpoints(agent_component_configs.kv_targets, false)
             .await
         {
-            error!("Failed to reconfigure connection manager; {e}");
+            error!(
+                "Failed to reconfigure connection manager; {}",
+                user_data(&e)
+            );
         }
 
         self.analytics
@@ -323,7 +343,7 @@ impl AgentInner {
             }) {
             Ok(_) => {}
             Err(e) => {
-                warn!("Failed to update TLS for HTTP client: {}", e);
+                warn!("Failed to update TLS for HTTP client: {}", user_data(&e));
             }
         };
 
@@ -362,15 +382,21 @@ fn short_user_agent(user_agent: &str) -> String {
 
 impl Agent {
     pub async fn new(opts: AgentOptions) -> Result<Self> {
+        Self::apply_log_redaction(&opts);
+
         let build_version = env!("CARGO_PKG_VERSION");
         let user_agent = format!("rust/{build_version} ({OS} {ARCH})");
         let kv_client_name = short_user_agent(&user_agent);
         let agent_id = Uuid::new_v4().to_string();
         info!(
             "Core SDK Version: {} - Agent ID: {}",
-            &user_agent, &agent_id
+            // The SDK version, OS and architecture, with nothing the application supplied.
+            not_sensitive(&user_agent),
+            &agent_id
         );
-        info!("Agent Options {opts}");
+        // The options carry the seed addresses and the bucket name, so they are tagged whole at
+        // the strictest category, rather than value by value inside the rendered struct.
+        info!("Agent Options {}", user_data(&opts));
 
         let auth_mechanisms = if !opts.auth_mechanisms.is_empty() {
             if opts.tls_config.is_none() && opts.auth_mechanisms.contains(&AuthMechanism::Plain) {
@@ -451,8 +477,10 @@ impl Agent {
             NetworkTypeHeuristic::identify(&state.latest_config, &cfg_source_host_port)
         };
         info!(
-            "Agent {} identified network type: {network_type}",
-            &agent_id
+            "Agent {} identified network type: {}",
+            &agent_id,
+            // "default", or the name of an alternate address network from the cluster config.
+            not_sensitive(&network_type)
         );
         state.network_type = network_type;
 
@@ -740,11 +768,16 @@ impl Agent {
                     Ok(client_result) => match client_result {
                         Ok(client) => client,
                         Err(e) => {
-                            let mut msg = format!("Failed to connect to endpoint: {e}");
-                            if let Some(source) = e.source() {
-                                msg = format!("{msg} - {source}");
+                            match e.source() {
+                                Some(source) => warn!(
+                                    "Failed to connect to endpoint: {} - {}",
+                                    user_data(&e),
+                                    user_data(source)
+                                ),
+                                None => {
+                                    warn!("Failed to connect to endpoint: {}", user_data(&e))
+                                }
                             }
-                            warn!("{msg}");
                             continue;
                         }
                     },
@@ -823,7 +856,7 @@ impl Agent {
         auth: Auth,
         bucket_name: Option<String>,
     ) -> Result<ParsedConfig> {
-        debug!("Polling config from {}", &endpoint);
+        debug!("Polling config from {}", system_data(&endpoint));
 
         let host_port = get_host_port_from_uri(&endpoint)?;
         let hostname = get_hostname_from_host_port(&host_port)?;
@@ -864,6 +897,26 @@ impl Agent {
         };
 
         Ok(parsed)
+    }
+
+    // Must run before anything is logged, so that every line logged while connecting is tagged.
+    //
+    // Redaction state is process-wide while it is configured per agent, so creating an agent may
+    // only turn it on, never off: one agent must not silently disable redaction for another, or
+    // for an application that enabled it directly.
+    fn apply_log_redaction(opts: &AgentOptions) {
+        if opts.log_redaction {
+            log_redaction::set_log_redaction(true);
+        }
+        // This tests the state in effect rather than what this agent asked for, since another
+        // agent or a direct set_log_redaction() call may have turned redaction on.
+        if log_redaction::is_log_redaction_enabled() && env::var(DEBUG_CONFIG_ENV_VAR).is_ok() {
+            warn!(
+                "Log redaction is enabled, but so is {DEBUG_CONFIG_ENV_VAR}: configuration dumps \
+                 are not annotated for redaction and may contain values that are annotated \
+                 elsewhere in the log"
+            );
+        }
     }
 
     fn gen_first_kv_client_configs(

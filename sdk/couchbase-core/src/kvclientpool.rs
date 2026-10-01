@@ -16,6 +16,7 @@
  *
  */
 
+use crate::log_redaction::{system_data, user_data};
 use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::error::Error as StdError;
@@ -138,7 +139,8 @@ where
         let id = opts.id;
         info!(
             "Creating new client pool {} for {}",
-            &id, &opts.target.address
+            &id,
+            system_data(&opts.target.address)
         );
 
         let fast_map = Arc::new(ArcSwap::from_pointee(KvClientPoolFastMap {
@@ -318,7 +320,7 @@ where
         let mut babysitters = self.babysitters.lock().await;
         for babysitter_entry in babysitters.drain(..) {
             if let Err(e) = babysitter_entry.babysitter.close().await {
-                debug!("Failed to close babysitter: {e:?}");
+                debug!("Failed to close babysitter: {:?}", user_data(&e));
             }
         }
 

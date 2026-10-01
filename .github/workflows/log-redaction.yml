@@ -1,0 +1,23 @@
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+name: Log redaction check
+
+# Every value the SDK passes to a tracing macro must be annotated for log redaction: wrapped with a
+# helper from couchbase_core::log_redaction, marked with not_sensitive/not_redacted, or named on
+# tools/log-redaction-check/allowlist.txt. The check reads names, not types, so a pass does not
+# prove the logs are correctly redacted; it proves every log argument has had a decision made.
+
+jobs:
+  log_redaction_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust toolchain and cache
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Test the checker
+        run: cargo test -p log-redaction-check
+      - name: Check log annotations
+        run: cargo run -p log-redaction-check

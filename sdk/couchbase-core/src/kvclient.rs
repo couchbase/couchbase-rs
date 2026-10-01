@@ -23,6 +23,7 @@ use crate::error::Error;
 use crate::error::ErrorKind::Memdx;
 use crate::error::{MemdxError, Result};
 use crate::kvclient_babysitter::KvTarget;
+use crate::log_redaction::{not_sensitive, system_data};
 use crate::memdx::connection::{ConnectOptions, ConnectionType, TcpConnection, TlsConnection};
 use crate::memdx::dispatcher::{
     Dispatcher, DispatcherOptions, OrphanResponseHandler, UnsolicitedPacketHandler,
@@ -273,7 +274,9 @@ where
 
         info!(
             "Kvclient {} assigning client id {} for {}",
-            &id, &client_id, &address
+            &id,
+            &client_id,
+            system_data(&address)
         );
 
         let (on_read_close_tx, mut on_read_close_rx) = oneshot::channel::<()>();
@@ -294,9 +297,11 @@ where
                             packet: p,
                             endpoint_id,
                         }) {
+                            // A channel error renders as a fixed message, never its payload.
                             warn!(
-                                "Failed to send unsolicited packet {e} on {}",
-                                unsolicited_client_id.clone()
+                                "Failed to send unsolicited packet {} on {}",
+                                not_sensitive(&e),
+                                &unsolicited_client_id
                             );
                         };
                     }
@@ -362,7 +367,12 @@ where
                 // send on it.
                 if !on_close.is_closed() {
                     if let Err(e) = on_close.send(()).await {
-                        debug!("Failed to send on_close for kvclient {}: {}", &read_id, e);
+                        // A channel error renders as a fixed message, never its payload.
+                        debug!(
+                            "Failed to send on_close for kvclient {}: {}",
+                            &read_id,
+                            not_sensitive(&e)
+                        );
                     }
                 }
             }
@@ -418,7 +428,10 @@ where
             };
 
             if let Some(hello) = res.hello {
-                info!("Enabled hello features: {:?}", &hello.enabled_features);
+                info!(
+                    "Enabled hello features: {:?}",
+                    not_sensitive(&hello.enabled_features)
+                );
                 kv_cli.supported_features = hello.enabled_features;
             }
 

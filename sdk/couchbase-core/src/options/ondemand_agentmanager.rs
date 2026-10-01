@@ -41,6 +41,10 @@ pub struct OnDemandAgentManagerOptions {
     pub http_config: HttpConfig,
     pub tcp_keep_alive_time: Option<Duration>,
     pub orphan_response_handler: Option<OrphanResponseHandler>,
+    /// Wrap sensitive values in log output in redaction tags. See
+    /// [`log_redaction`](crate::log_redaction). Redaction is process-wide, so creating an agent
+    /// with this set turns it on for every agent, and creating one without it never turns it off.
+    pub log_redaction: bool,
 }
 
 impl OnDemandAgentManagerOptions {
@@ -57,6 +61,7 @@ impl OnDemandAgentManagerOptions {
             http_config: HttpConfig::default(),
             tcp_keep_alive_time: None,
             orphan_response_handler: None,
+            log_redaction: false,
         }
     }
 
@@ -117,6 +122,11 @@ impl OnDemandAgentManagerOptions {
         self.orphan_response_handler = orphan_response_handler;
         self
     }
+
+    pub fn log_redaction(mut self, log_redaction: bool) -> Self {
+        self.log_redaction = log_redaction;
+        self
+    }
 }
 
 impl From<OnDemandAgentManagerOptions> for AgentOptions {
@@ -134,6 +144,7 @@ impl From<OnDemandAgentManagerOptions> for AgentOptions {
             http_config: opts.http_config,
             tcp_keep_alive_time: opts.tcp_keep_alive_time,
             orphan_response_handler: opts.orphan_response_handler,
+            log_redaction: opts.log_redaction,
         }
     }
 }
@@ -152,6 +163,7 @@ impl From<AgentOptions> for OnDemandAgentManagerOptions {
             http_config: opts.http_config,
             tcp_keep_alive_time: opts.tcp_keep_alive_time,
             orphan_response_handler: opts.orphan_response_handler,
+            log_redaction: opts.log_redaction,
         }
     }
 }

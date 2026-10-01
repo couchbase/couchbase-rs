@@ -1,0 +1,12 @@
+[package]
+name = "log-redaction-check"
+version = "0.1.0"
+edition = "2021"
+description = "Checks that values logged by the Couchbase SDK are annotated for log redaction"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+proc-macro2 = { version = "1.0", features = ["span-locations"] }
+quote = "1.0"
+syn = { version = "2.0", features = ["full", "visit", "printing"] }

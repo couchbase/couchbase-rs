@@ -25,6 +25,7 @@ use crate::kvclient::{KvClient, StdKvClient};
 use crate::kvclient_ops::KvClientOps;
 use crate::kvclientpool::KvClientPool;
 use crate::kvendpointclientmanager::KvEndpointClientManager;
+use crate::log_redaction::{not_redacted, system_data};
 use crate::memdx::hello_feature::HelloFeature;
 use crate::memdx::request::{GetClusterConfigKnownVersion, GetClusterConfigRequest};
 use crate::parsedconfig::ParsedConfig;
@@ -33,6 +34,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{timeout, timeout_at};
 use tracing::{debug, trace};
+
+// Dumps every fetched cluster config to the log, for debugging. The dump is not annotated for
+// redaction, and creating an agent warns when it is set while redaction is on.
+pub(crate) const DEBUG_CONFIG_ENV_VAR: &str = "RSCBC_DEBUG_CONFIG";
 
 #[derive(Clone)]
 pub(crate) struct ConfigFetcherMemd<M: KvEndpointClientManager> {
@@ -65,7 +70,7 @@ impl<M: KvEndpointClientManager> ConfigFetcherMemd<M> {
             return Ok(None);
         }
 
-        debug!("Fetching config from {}", &endpoint);
+        debug!("Fetching config from {}", system_data(endpoint));
 
         let hostname = client.remote_hostname();
         let known_version = {
@@ -90,8 +95,10 @@ impl<M: KvEndpointClientManager> ConfigFetcherMemd<M> {
 
         let config = cbconfig::parse::parse_terse_config(&resp.config, hostname)?;
 
-        if env::var("RSCBC_DEBUG_CONFIG").is_ok() {
-            trace!("Fetcher fetched new config {:?}", &config);
+        if env::var(DEBUG_CONFIG_ENV_VAR).is_ok() {
+            // Not annotated: the dump exists to show exactly what the server sent, and is an
+            // opt-in debugging aid rather than something a deployment leaves on.
+            trace!("Fetcher fetched new config {:?}", not_redacted(&config));
         }
 
         Ok(Some(ConfigParser::parse_terse_config(config, hostname)?))
