@@ -29,7 +29,6 @@ use {
     hickory_resolver::config::*, hickory_resolver::net::runtime::TokioRuntimeProvider,
     hickory_resolver::proto::rr::RData, hickory_resolver::system_conf::read_system_conf,
     hickory_resolver::TokioResolver, std::io, std::net::SocketAddr, std::time::Duration,
-    tracing::debug,
 };
 
 pub const DEFAULT_LEGACY_HTTP_PORT: u16 = 8091;
@@ -221,6 +220,10 @@ pub struct ResolvedConnSpec {
     pub couchbase2_host: Option<Address>,
     pub srv_record: Option<SrvRecord>,
     pub options: HashMap<String, Vec<String>>,
+    /// Why a DNS SRV lookup failed, when one was attempted and the hosts in the connection string
+    /// were used instead. Purposefully returned rather than logged here, so we can leave
+    /// logging details to the caller.
+    pub srv_lookup_error: Option<String>,
 }
 
 #[cfg(feature = "dns-srv")]
@@ -248,6 +251,7 @@ pub async fn resolve(
         (DEFAULT_MEMD_PORT, false, false)
     };
 
+    let mut srv_lookup_error = None;
     if let Some(srv_record) = conn_spec.srv_record() {
         match lookup_srv(
             &srv_record.scheme,
@@ -269,15 +273,18 @@ pub async fn resolve(
                         host: srv_record.host,
                     }),
                     options: conn_spec.options,
+                    srv_lookup_error: None,
                 });
             }
             Err(e) => {
-                debug!("Srv lookup failed {e}");
+                srv_lookup_error = Some(e.to_string());
             }
         };
     };
 
-    resolve_without_srv(conn_spec, default_port, has_explicit_scheme, use_ssl)
+    let mut resolved = resolve_without_srv(conn_spec, default_port, has_explicit_scheme, use_ssl)?;
+    resolved.srv_lookup_error = srv_lookup_error;
+    Ok(resolved)
 }
 
 #[cfg(not(feature = "dns-srv"))]
@@ -331,6 +338,7 @@ fn resolve_without_srv(
             couchbase2_host: None,
             srv_record: None,
             options: conn_spec.options,
+            srv_lookup_error: None,
         });
     }
 
@@ -380,6 +388,7 @@ fn resolve_without_srv(
         couchbase2_host: None,
         srv_record: None,
         options: conn_spec.options,
+        srv_lookup_error: None,
     })
 }
 
@@ -419,6 +428,7 @@ fn handle_couchbase2_scheme(conn_spec: ConnSpec) -> error::Result<ResolvedConnSp
         couchbase2_host: Some(host),
         srv_record: None,
         options: conn_spec.options,
+        srv_lookup_error: None,
     })
 }
 
@@ -1161,5 +1171,55 @@ mod test {
                 port: target_port,
             }]
         );
+        assert_eq!(resolved.srv_lookup_error, None);
+    }
+
+    #[cfg(feature = "dns-srv")]
+    #[tokio::test]
+    async fn test_failed_srv_lookup_is_returned_to_the_caller() {
+        use crate::DnsConfig;
+        use hickory_resolver::proto::op::{Message, OpCode};
+        use hickory_resolver::proto::serialize::binary::BinEncodable;
+        use std::time::Duration;
+        use tokio::net::UdpSocket;
+
+        let server_socket = UdpSocket::bind("127.0.0.1:0")
+            .await
+            .expect("failed to bind mock DNS server");
+        let server_addr = server_socket.local_addr().unwrap();
+
+        // Answers the query with no records, so the SRV lookup fails.
+        tokio::spawn(async move {
+            let mut buf = [0u8; 512];
+            let Ok((len, client_addr)) = server_socket.recv_from(&mut buf).await else {
+                return;
+            };
+
+            let request = Message::from_vec(&buf[..len]).expect("failed to decode DNS query");
+            let mut response = Message::response(request.id, OpCode::Query);
+            response.add_query(request.queries[0].clone());
+
+            let bytes = response.to_bytes().expect("failed to encode DNS response");
+            let _ = server_socket.send_to(&bytes, client_addr).await;
+        });
+
+        let conn_spec = parse_or_die("couchbase://myhost.internal.example");
+        let dns_config = DnsConfig {
+            namespace: server_addr,
+            timeout: Some(Duration::from_secs(2)),
+        };
+
+        let resolved = resolve(conn_spec, Some(dns_config))
+            .await
+            .expect("a failed SRV lookup falls back to the connection string hosts");
+
+        assert_eq!(
+            resolved.memd_hosts,
+            vec![Address {
+                host: "myhost.internal.example".to_string(),
+                port: DEFAULT_MEMD_PORT,
+            }]
+        );
+        assert!(resolved.srv_lookup_error.is_some());
     }
 }

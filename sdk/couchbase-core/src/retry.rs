@@ -16,6 +16,7 @@
  *
  */
 
+use crate::log_redaction::not_sensitive;
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::future::Future;
@@ -311,7 +312,9 @@ pub(crate) async fn retry_after_error(
         if let Some(duration) = rs.maybe_retry(strategy.clone(), retry_info, reason).await {
             debug!(
                 "Retrying {} after {:?} due to {}",
-                retry_info, duration, reason
+                retry_info,
+                duration,
+                not_sensitive(&reason)
             );
             return Some(duration);
         }

@@ -16,6 +16,7 @@
  *
  */
 
+use crate::log_redaction::not_sensitive;
 use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
@@ -1094,7 +1095,9 @@ impl<
                 {
                     debug!(
                         "Retrying {} after {:?} due to {}",
-                        &retry_info, duration, reason
+                        &retry_info,
+                        duration,
+                        not_sensitive(&reason)
                     );
                     sleep(duration).await;
                     continue;

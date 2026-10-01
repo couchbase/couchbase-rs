@@ -19,6 +19,7 @@
 use crate::authenticator::Authenticator;
 use crate::error::MemdxError;
 use crate::kvclient::{KvClient, StdKvClient};
+use crate::log_redaction::not_sensitive;
 use crate::memdx;
 use crate::memdx::dispatcher::Dispatcher;
 use crate::memdx::hello_feature::HelloFeature;
@@ -481,7 +482,10 @@ where
             Ok(v) => Ok(v),
             Err(e) => {
                 if let memdx::error::ErrorKind::Dispatch { .. } = e.kind() {
-                    debug!("Client {} closing due to dispatch error", &self.id);
+                    debug!(
+                        "Client {} closing due to dispatch error",
+                        not_sensitive(&self.id)
+                    );
                     let _ = self.close().await;
                 }
 
@@ -498,7 +502,10 @@ where
             Err(e) => {
                 if let memdx::error::ErrorKind::Server(se) = e.kind() {
                     if se.kind() == &memdx::error::ServerErrorKind::AuthStale {
-                        info!("Client {} closing due to auth stale status", &self.id);
+                        info!(
+                            "Client {} closing due to auth stale status",
+                            not_sensitive(&self.id)
+                        );
                         let _ = self.close().await;
                     }
                 }

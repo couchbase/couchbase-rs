@@ -88,6 +88,9 @@ pub struct ClusterOptions {
     /// The default retry strategy for all operations. Individual operations can override
     /// this with their own per-operation retry strategy option.
     pub default_retry_strategy: Option<Arc<dyn crate::retry::RetryStrategy>>,
+    /// Whether to wrap sensitive values in log output in redaction tags. See
+    /// [`ClusterOptions::log_redaction`].
+    pub log_redaction: Option<bool>,
 }
 
 impl Debug for ClusterOptions {
@@ -101,6 +104,7 @@ impl Debug for ClusterOptions {
             .field("http_options", &self.http_options)
             .field("kv_options", &self.kv_options)
             .field("orphan_reporter_options", &self.orphan_reporter_options)
+            .field("log_redaction", &self.log_redaction)
             .finish()
     }
 }
@@ -120,6 +124,7 @@ impl ClusterOptions {
             dns_options: None,
             orphan_reporter_options: OrphanReporterOptions::new(),
             default_retry_strategy: None,
+            log_redaction: None,
         }
     }
 
@@ -183,6 +188,57 @@ impl ClusterOptions {
         retry_strategy: Arc<dyn crate::retry::RetryStrategy>,
     ) -> Self {
         self.default_retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets whether log redaction is enabled. Disabled by default.
+    ///
+    /// When enabled, the SDK wraps sensitive values in its log output in tags, so that an
+    /// external tool such as `cblogredaction` can strip or hash them after the fact. The SDK never
+    /// removes or obscures anything itself, so a log written with redaction enabled still contains
+    /// identifying information until those tags are processed.
+    ///
+    /// | Tag | Category | Examples |
+    /// |-----|----------|----------|
+    /// | `<ud>...</ud>` | user data | document keys, usernames, query statements, error messages |
+    /// | `<md>...</md>` | metadata | bucket, scope, collection and index names |
+    /// | `<sd>...</sd>` | system data | hostnames, IP addresses, ports |
+    ///
+    /// Redaction is process-wide: once any cluster enables it, it stays enabled for every cluster
+    /// in the process, and connecting a cluster without it never turns it off.
+    ///
+    /// # Spans and metrics
+    ///
+    /// Redaction applies to log messages, not to the SDK's telemetry: the fields of its tracing
+    /// spans, and its metric events. Those carry bucket, scope and collection names, server
+    /// addresses and query statements, and are left as they are because tracing and metrics
+    /// backends such as OpenTelemetry need the real values.
+    ///
+    /// Every span the SDK creates is under the `couchbase::tracing` target, and every metric event
+    /// under `couchbase::metrics`, both at `TRACE` level, so they only exist when a subscriber
+    /// enables those targets. If a filter shared by every layer enables them, for instance to feed
+    /// OpenTelemetry or the `LoggingMeter`, a `tracing_subscriber` fmt layer prints the fields of
+    /// the current span in front of each line and the metric events as lines of their own,
+    /// untagged. Give the fmt layer a filter of its own that turns both targets off; it then
+    /// leaves them out, while other layers keep them:
+    ///
+    /// ```rust,no_run
+    /// use tracing_subscriber::layer::SubscriberExt;
+    /// use tracing_subscriber::util::SubscriberInitExt;
+    /// use tracing_subscriber::{fmt, EnvFilter, Layer};
+    /// # let otel_layer = tracing_subscriber::layer::Identity::new();
+    ///
+    /// tracing_subscriber::registry()
+    ///     // Layers that need the spans and metrics, such as OpenTelemetry, keep seeing them.
+    ///     .with(otel_layer)
+    ///     // The log output filters them out for itself.
+    ///     .with(fmt::layer().with_filter(EnvFilter::new(
+    ///         "info,couchbase::tracing=off,couchbase::metrics=off",
+    ///     )))
+    ///     .init();
+    /// ```
+    pub fn log_redaction(mut self, enabled: bool) -> Self {
+        self.log_redaction = Some(enabled);
         self
     }
 }
@@ -795,7 +851,7 @@ impl Display for ClusterOptions {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(
             f,
-            "{{ authenticator: {}, compression_mode: {:?}, tls_options: {}, tcp_keep_alive_time: {:?}, poller_options: {}, http_options: {}, kv_options: {}, orphan_reporter_options: {} }}",
+            "{{ authenticator: {}, compression_mode: {:?}, tls_options: {}, tcp_keep_alive_time: {:?}, poller_options: {}, http_options: {}, kv_options: {}, orphan_reporter_options: {}, log_redaction: {:?} }}",
             self.authenticator,
             self.compression_mode,
             if let Some(tls) = &self.tls_options {tls.to_string()} else {"none".to_string()},
@@ -803,7 +859,8 @@ impl Display for ClusterOptions {
             self.poller_options,
             self.http_options,
             self.kv_options,
-            self.orphan_reporter_options
+            self.orphan_reporter_options,
+            self.log_redaction
         )
     }
 }

@@ -25,6 +25,7 @@ use crate::error::{Error, Result};
 use crate::kvclient::KvClient;
 use crate::kvclient_ops::KvClientOps;
 use crate::kvendpointclientmanager::KvEndpointClientManager;
+use crate::log_redaction::system_data;
 use crate::memdx::hello_feature::HelloFeature;
 use crate::memdx::request::{GetClusterConfigKnownVersion, GetClusterConfigRequest};
 use crate::parsedconfig::ParsedConfig;
@@ -140,7 +141,8 @@ impl<M: KvEndpointClientManager> ConfigWatcherMemdInner<M> {
                         client.has_feature(HelloFeature::ClusterMapChangeNotificationBrief);
                     if !supported {
                         debug!(
-                            "Polling config from {endpoint} with rev_id: {rev_id}, rev_epoch: {rev_epoch}"
+                            "Polling config from {} with rev_id: {rev_id}, rev_epoch: {rev_epoch}",
+                            system_data(&endpoint)
                         );
                     }
 

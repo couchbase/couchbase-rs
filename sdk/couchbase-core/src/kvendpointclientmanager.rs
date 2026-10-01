@@ -21,6 +21,7 @@ use crate::kvclient::{KvClient, KvClientBootstrapOptions, UnsolicitedPacketSende
 use crate::kvclient_babysitter::{KvClientBabysitter, KvTarget};
 use crate::kvclient_ops::KvClientOps;
 use crate::kvclientpool::{KvClientPool, KvClientPoolOptions};
+use crate::log_redaction::{not_sensitive, system_data_list, user_data};
 use crate::memdx::dispatcher::OrphanResponseHandler;
 use crate::memdx::request::PingRequest;
 use crate::memdx::response::PingResponse;
@@ -194,9 +195,9 @@ where
         add_only: bool,
     ) -> error::Result<()> {
         debug!(
-            "Kvclientmanager {} updating endpoints to {:?}",
-            self.id,
-            endpoints.keys()
+            "Kvclientmanager {} updating endpoints to [{}]",
+            not_sensitive(&self.id),
+            system_data_list(endpoints.keys()).quoted()
         );
 
         let mut slow_state = self.slow_state.lock().await;
@@ -216,7 +217,11 @@ where
                 old_pool
             } else {
                 let pool_id = Uuid::new_v4().to_string();
-                info!("Kvclientmanager {} creating pool {}", self.id, &pool_id);
+                info!(
+                    "Kvclientmanager {} creating pool {}",
+                    not_sensitive(&self.id),
+                    &pool_id
+                );
                 let pool = P::new(KvClientPoolOptions {
                     id: pool_id,
                     on_demand_connect: self.on_demand_connect,
@@ -251,7 +256,11 @@ where
             for pool in old_pools.into_values() {
                 let id = pool.id();
                 if let Err(e) = pool.close().await {
-                    debug!("Failed to close pool {id}: {e}");
+                    debug!(
+                        "Failed to close pool {}: {}",
+                        not_sensitive(&id),
+                        user_data(&e)
+                    );
                 };
             }
         }
@@ -337,6 +346,9 @@ where
     K: KvClient,
 {
     fn drop(&mut self) {
-        info!("Dropping StdKvEndpointClientManager {}", self.id);
+        info!(
+            "Dropping StdKvEndpointClientManager {}",
+            not_sensitive(&self.id)
+        );
     }
 }

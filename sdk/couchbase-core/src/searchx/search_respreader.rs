@@ -20,6 +20,7 @@ use crate::httpx;
 use crate::httpx::decoder::Decoder;
 use crate::httpx::raw_json_row_streamer::{RawJsonRowItem, RawJsonRowStreamer};
 use crate::httpx::response::Response;
+use crate::log_redaction::user_data;
 use crate::searchx::error::{ErrorKind, ServerError, ServerErrorKind};
 use crate::searchx::search::{decode_common_error, Search};
 use crate::searchx::search_result::{FacetResult, MetaData, Metrics, ResultHit};
@@ -101,7 +102,7 @@ impl SearchRespReader {
             let body = match resp.bytes().await {
                 Ok(b) => b,
                 Err(e) => {
-                    debug!("Failed to read response body on error {e}");
+                    debug!("Failed to read response body on error {}", user_data(&e));
                     return Err(error::Error::new_http_error(e, endpoint));
                 }
             };

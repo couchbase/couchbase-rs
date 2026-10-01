@@ -5,5 +5,6 @@ members = [
     "sdk/couchbase-connstr",
     "sdk/couchbase-core",
     "sdk/protostellar",
+    "tools/log-redaction-check",
 ]
 resolver = "2"

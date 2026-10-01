@@ -40,6 +40,7 @@ use crate::results::diagnostics::{DiagnosticsResult, PingReport};
 use crate::results::query_results::QueryResult;
 use crate::tracing::{Keyspace, SERVICE_VALUE_QUERY};
 use couchbase_core::create_span;
+use couchbase_core::log_redaction::{not_sensitive, set_log_redaction};
 use std::sync::Arc;
 use tracing::info;
 use tracing::Instrument;
@@ -122,8 +123,13 @@ impl Cluster {
         conn_str: impl AsRef<str>,
         opts: ClusterOptions,
     ) -> error::Result<Cluster> {
+        if opts.log_redaction == Some(true) {
+            set_log_redaction(true);
+        }
+
         info!("SDK Version: {}", env!("CARGO_PKG_VERSION"));
-        info!("Cluster Options {opts}");
+        // The options name no host, user or bucket: the authenticator renders as its type only.
+        info!("Cluster Options {}", not_sensitive(&opts));
         let client = Arc::new(ClusterClient::connect(conn_str, opts).await?);
 
         let query_client = Arc::new(client.query_client());

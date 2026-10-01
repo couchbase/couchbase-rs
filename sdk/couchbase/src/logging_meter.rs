@@ -22,6 +22,7 @@
 //! at a configurable interval. Register it as a layer on a `tracing_subscriber::Registry`
 //! to enable metrics logging.
 
+use couchbase_core::log_redaction::not_sensitive;
 use hdrhistogram::Histogram;
 use serde_json::json;
 use std::collections::HashMap;
@@ -210,7 +211,10 @@ impl LoggingMeter {
         });
 
         match serde_json::to_string(&output) {
-            Ok(s) => tracing::info!("LoggingMeter {}", s),
+            // The report is keyed on service and operation names and holds only counts and
+            // durations, so nothing in it is sensitive. If bucket, scope or collection names
+            // are ever added, tag the report as metadata.
+            Ok(s) => tracing::info!("LoggingMeter {}", not_sensitive(&s)),
             Err(_) => tracing::error!("Failed to serialize LoggingMeter output"),
         }
     }

@@ -16,6 +16,7 @@
  *
  */
 
+use crate::log_redaction::metadata;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
@@ -91,7 +92,7 @@ impl OnDemandAgentManager {
 
         let slow_map = self.slow_map.lock().await;
         for (bucket_name, agent) in slow_map.iter() {
-            debug!("Reconfiguring agent for bucket {}", bucket_name);
+            debug!("Reconfiguring agent for bucket {}", metadata(bucket_name));
             agent.reconfigure(opts.clone()).await;
         }
     }
@@ -106,7 +107,7 @@ impl OnDemandAgentManager {
 
             debug!(
                 "Bucket {} not in slow map, checking notif map",
-                &bucket_name
+                metadata(&bucket_name)
             );
             // If we don't have an agent then check the notif map to see if someone else is getting
             // an agent already. Note that we're still inside the slow_map lock here.
@@ -118,14 +119,17 @@ impl OnDemandAgentManager {
 
                 debug!(
                     "Bucket {} in notif map, awaiting notification",
-                    &bucket_name
+                    metadata(&bucket_name)
                 );
                 notif.notified().await;
-                debug!("Bucket {} received notification", &bucket_name);
+                debug!("Bucket {} received notification", metadata(&bucket_name));
                 return Ok(());
             };
 
-            debug!("Bucket {} not in any map, creating new", &bucket_name);
+            debug!(
+                "Bucket {} not in any map, creating new",
+                metadata(&bucket_name)
+            );
             let notif = Arc::new(Notify::new());
             notif_map.insert(bucket_name.clone(), notif.clone());
 

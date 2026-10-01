@@ -27,6 +27,7 @@ use crate::tracing::{
     SPAN_ATTRIB_OPERATION_ID_KEY, SPAN_ATTRIB_OPERATION_KEY, SPAN_ATTRIB_SERVER_DURATION_KEY,
     SPAN_ATTRIB_SERVICE_KEY, SPAN_NAME_DISPATCH_TO_SERVER, SPAN_NAME_REQUEST_ENCODING,
 };
+use couchbase_core::log_redaction::{not_sensitive, system_data, user_data};
 
 const COUCHBASE_TARGET_PREFIX: &str = "couchbase::tracing";
 
@@ -58,7 +59,21 @@ impl Serialize for SocketAddr {
     {
         let ip = self.ip.as_deref().unwrap_or("");
         let port = self.port.as_deref().unwrap_or("");
-        serializer.serialize_str(&format!("{ip}:{port}"))
+        let socket = format!("{ip}:{port}");
+        serializer.serialize_str(&system_data(&socket).to_string())
+    }
+}
+
+fn serialize_operation_id<S>(
+    operation_id: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match operation_id {
+        Some(id) => serializer.serialize_str(&user_data(id).to_string()),
+        None => serializer.serialize_none(),
     }
 }
 
@@ -88,7 +103,10 @@ struct SpanInfo {
     operation_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     last_local_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_operation_id"
+    )]
     operation_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     last_remote_socket: Option<SocketAddr>,
@@ -336,8 +354,13 @@ impl ThresholdLoggingTracer {
 
         if !log_output.is_empty() {
             match serde_json::to_string(&log_output) {
+                // The values that need redaction are tagged inside the report as it is serialized
+                // (see SpanInfo), so the report as a whole takes no tag.
                 Ok(log_output_str) => {
-                    tracing::warn!("Operations over threshold: {}", log_output_str)
+                    tracing::warn!(
+                        "Operations over threshold: {}",
+                        not_sensitive(&log_output_str)
+                    )
                 }
                 Err(_) => tracing::error!("Failed to serialize threshold log output"),
             }
@@ -869,6 +892,51 @@ mod tests {
                 .and_then(|s| s.ip.as_deref()),
             Some("10.0.0.1")
         );
+    }
+
+    fn report_entry() -> SpanInfo {
+        let mut info = SpanInfo::new("query".to_string());
+        info.total_duration_us = Some(1500);
+        info.operation_id = Some("my-context-id".to_string());
+        info.last_remote_socket = Some(SocketAddr {
+            ip: Some("10.0.0.1".to_string()),
+            port: Some("8093".to_string()),
+        });
+        info
+    }
+
+    #[test]
+    #[serial_test::serial(log_redaction)]
+    fn a_report_entry_is_unchanged_while_redaction_is_disabled() {
+        couchbase_core::log_redaction::set_log_redaction(false);
+
+        let json = serde_json::to_string(&report_entry()).unwrap();
+        assert!(json.contains(r#""operation_id":"my-context-id""#), "{json}");
+        assert!(
+            json.contains(r#""last_remote_socket":"10.0.0.1:8093""#),
+            "{json}"
+        );
+        assert!(!json.contains('<'), "{json}");
+    }
+
+    #[test]
+    #[serial_test::serial(log_redaction)]
+    fn only_the_sensitive_values_of_a_report_entry_are_tagged() {
+        couchbase_core::log_redaction::set_log_redaction(true);
+        let json = serde_json::to_string(&report_entry()).unwrap();
+        couchbase_core::log_redaction::set_log_redaction(false);
+
+        assert!(
+            json.contains(r#""operation_id":"<ud>my-context-id</ud>""#),
+            "{json}"
+        );
+        assert!(
+            json.contains(r#""last_remote_socket":"<sd>10.0.0.1:8093</sd>""#),
+            "{json}"
+        );
+        assert!(json.contains(r#""operation_name":"query""#), "{json}");
+        assert!(json.contains(r#""total_duration_us":1500"#), "{json}");
+        serde_json::from_str::<serde_json::Value>(&json).unwrap();
     }
 
     #[tokio::test]
