@@ -19,6 +19,7 @@
 use crate::error;
 use crate::error::ErrorKind;
 use couchbase_core::agent::Agent;
+use couchbase_core::log_redaction::{metadata, user_data};
 use couchbase_core::ondemand_agentmanager::OnDemandAgentManager;
 use std::sync::{Arc, RwLock, Weak};
 use tokio::sync::Notify;
@@ -57,7 +58,11 @@ impl CouchbaseAgentProvider {
                 let agent = match agent_manager.get_bucket_agent(bucket_name.clone()).await {
                     Ok(agent) => agent,
                     Err(e) => {
-                        tracing::error!("failed to get agent for bucket {bucket_name}: {e}");
+                        tracing::error!(
+                            "failed to get agent for bucket {}: {}",
+                            metadata(&bucket_name),
+                            user_data(&e)
+                        );
                         continue;
                     }
                 };

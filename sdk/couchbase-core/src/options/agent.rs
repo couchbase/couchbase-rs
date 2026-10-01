@@ -19,6 +19,7 @@
 use crate::address::Address;
 use crate::auth_mechanism::AuthMechanism;
 use crate::authenticator::Authenticator;
+use crate::log_redaction::{metadata, system_data, user_data};
 use crate::memdx::dispatcher::OrphanResponseHandler;
 use crate::tls_config::TlsConfig;
 use std::fmt::{Debug, Display};
@@ -43,6 +44,10 @@ pub struct AgentOptions {
     pub http_config: HttpConfig,
     pub tcp_keep_alive_time: Option<Duration>,
     pub orphan_response_handler: Option<OrphanResponseHandler>,
+    /// Wrap sensitive values in log output in redaction tags. See
+    /// [`log_redaction`](crate::log_redaction). Redaction is process-wide, so creating an agent
+    /// with this set turns it on for every agent, and creating one without it never turns it off.
+    pub log_redaction: bool,
 }
 
 impl Debug for AgentOptions {
@@ -58,6 +63,7 @@ impl Debug for AgentOptions {
             .field("kv_config", &self.kv_config)
             .field("http_config", &self.http_config)
             .field("tcp_keep_alive_time", &self.tcp_keep_alive_time)
+            .field("log_redaction", &self.log_redaction)
             .finish()
     }
 }
@@ -77,6 +83,7 @@ impl AgentOptions {
             http_config: HttpConfig::default(),
             tcp_keep_alive_time: None,
             orphan_response_handler: None,
+            log_redaction: false,
         }
     }
 
@@ -132,6 +139,11 @@ impl AgentOptions {
 
     pub fn tcp_keep_alive_time(mut self, tcp_keep_alive: Duration) -> Self {
         self.tcp_keep_alive_time = Some(tcp_keep_alive);
+        self
+    }
+
+    pub fn log_redaction(mut self, log_redaction: bool) -> Self {
+        self.log_redaction = log_redaction;
         self
     }
 
@@ -433,6 +445,32 @@ impl Display for HttpConfig {
 
 impl Display for AgentOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.write_fields(f, &self.seed_config, &self.bucket_name, &self.network)
+    }
+}
+
+impl AgentOptions {
+    pub(crate) fn to_string_redacted(&self) -> String {
+        let mut out = String::new();
+        // Writing to a String cannot fail.
+        let _ = self.write_fields(
+            &mut out,
+            &system_data(&self.seed_config),
+            &metadata(&self.bucket_name),
+            &user_data(&self.network),
+        );
+        out
+    }
+
+    // The rendering shared by Display and to_string_redacted, which differ only in whether the
+    // three values that need redaction are passed in plain or wrapped.
+    fn write_fields(
+        &self,
+        out: &mut impl std::fmt::Write,
+        seed_config: &dyn Display,
+        bucket_name: &dyn Debug,
+        network: &dyn Debug,
+    ) -> std::fmt::Result {
         let tls_config = if cfg!(feature = "rustls-tls") {
             "rustls-tls"
         } else if cfg!(feature = "native-tls") {
@@ -442,19 +480,81 @@ impl Display for AgentOptions {
         };
 
         write!(
-            f,
-            "{{ seed_config: {}, auth_mechanisms: {:?}, tls_config: {}, bucket_name: {:?}, network: {:?}, compression_config: {}, config_poller_config: {}, kv_config: {}, http_config: {}, tcp_keep_alive_time: {:?}, orphan_response_handler: {} }}",
-            self.seed_config,
+            out,
+            "{{ seed_config: {}, auth_mechanisms: {:?}, tls_config: {}, bucket_name: {:?}, network: {:?}, compression_config: {}, config_poller_config: {}, kv_config: {}, http_config: {}, tcp_keep_alive_time: {:?}, orphan_response_handler: {}, log_redaction: {} }}",
+            seed_config,
             self.auth_mechanisms,
             tls_config,
-            self.bucket_name.clone(),
-            self.network.clone(),
+            bucket_name,
+            network,
             self.compression_config,
             self.config_poller_config,
             self.kv_config,
             self.http_config,
             self.tcp_keep_alive_time,
             if self.orphan_response_handler.is_some() { "Some" } else { "None" },
+            self.log_redaction,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::authenticator::PasswordAuthenticator;
+    use crate::log_redaction::tests::ScopedLogRedaction;
+
+    fn options() -> AgentOptions {
+        AgentOptions::new(
+            SeedConfig::new().memd_addrs(vec![Address {
+                host: "10.0.0.1".to_string(),
+                port: 11210,
+            }]),
+            Authenticator::PasswordAuthenticator(PasswordAuthenticator {
+                username: "user".to_string(),
+                password: "pass".to_string(),
+            }),
+        )
+        .bucket_name("travel-sample".to_string())
+        .network("external".to_string())
+    }
+
+    #[test]
+    fn to_string_redacted_matches_display_while_redaction_is_disabled() {
+        let _r = ScopedLogRedaction::new(false);
+        let opts = options();
+
+        assert_eq!(opts.to_string_redacted(), opts.to_string());
+    }
+
+    #[test]
+    fn to_string_redacted_tags_only_the_values_that_need_it() {
+        let _r = ScopedLogRedaction::new(true);
+        let rendered = options().to_string_redacted();
+
+        assert!(
+            rendered.contains(
+                r#"seed_config: <sd>{ http_addrs: [], memd_addrs: [Address { host: "10.0.0.1", port: 11210 }] }</sd>"#
+            ),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(r#"bucket_name: <md>Some("travel-sample")</md>"#),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(r#"network: <ud>Some("external")</ud>"#),
+            "{rendered}"
+        );
+        assert_eq!(rendered.matches("</").count(), 3, "{rendered}");
+    }
+
+    #[test]
+    fn display_never_carries_tags() {
+        let _r = ScopedLogRedaction::new(true);
+        let rendered = options().to_string();
+
+        assert!(rendered.contains("10.0.0.1"), "{rendered}");
+        assert!(!rendered.contains('<'), "{rendered}");
     }
 }

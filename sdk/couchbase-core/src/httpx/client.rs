@@ -20,6 +20,7 @@ use crate::httpx::error::ErrorKind::Connect;
 use crate::httpx::error::{Error, Result as HttpxResult};
 use crate::httpx::request::{Auth, OboPasswordOrDomain, Request};
 use crate::httpx::response::Response;
+use crate::log_redaction::user_data;
 use crate::tls_config::TlsConfig;
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
@@ -181,9 +182,11 @@ impl Client for ReqwestClient {
         trace!(
             "Writing request on {} to {}. Method={}. Request id={}",
             &self.client_id,
-            &req.uri,
+            // The URI carries the host and a path that can name buckets, indexes and users, so
+            // it is tagged whole at the strictest category any part of it can hold.
+            user_data(&req.uri),
             &req.method,
-            &id
+            user_data(&id)
         );
 
         let mut builder = inner.request(req.method, req.uri);
@@ -230,22 +233,27 @@ impl Client for ReqwestClient {
                 trace!(
                     "Received response on {}. Request id={}. Status: {}",
                     &self.client_id,
-                    &id,
+                    user_data(&id),
                     response.status()
                 );
                 Response::from(response)
             }),
             Err(err) => {
-                let mut msg = format!(
-                    "Received error on {}. Request id={}. Err: {}",
-                    self.client_id, id, err,
-                );
-
-                if let Some(source) = err.source() {
-                    msg = format!("{msg}. Source: {source}");
+                match err.source() {
+                    Some(source) => trace!(
+                        "Received error on {}. Request id={}. Err: {}. Source: {}",
+                        self.client_id,
+                        user_data(&id),
+                        user_data(&err),
+                        user_data(source)
+                    ),
+                    None => trace!(
+                        "Received error on {}. Request id={}. Err: {}",
+                        self.client_id,
+                        user_data(&id),
+                        user_data(&err)
+                    ),
                 }
-
-                trace!("{msg}");
 
                 if err.is_connect() {
                     Err(Error::new_connect_error(err.to_string()))

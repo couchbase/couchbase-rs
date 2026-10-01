@@ -16,6 +16,7 @@
  *
  */
 
+use crate::log_redaction::{not_sensitive, user_data};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{SinkExt, TryFutureExt};
@@ -226,7 +227,8 @@ impl Client {
                                                             match sender.send(Err(Error::new_decompression_error().with(e))).await{
                                                                 Ok(_) => {}
                                                                 Err(e) => {
-                                                                     debug!("Sending response to caller failed: {e}");
+                                                                     // A channel error renders as a fixed message, never its payload.
+                                                                     debug!("Sending response to caller failed: {}", not_sensitive(&e));
                                                                 }
                                                             };
                                                          continue;
@@ -249,7 +251,8 @@ impl Client {
                                         match sender.send(Ok(resp)).await {
                                             Ok(_) => {}
                                             Err(e) => {
-                                                debug!("Sending response to caller failed: {e}");
+                                                // A channel error renders as a fixed message, never its payload.
+                                                debug!("Sending response to caller failed: {}", not_sensitive(&e));
                                                 let graceful = opts.closed.load(Ordering::SeqCst) || opts.on_close_cancel.is_cancelled();
                                                 Self::on_read_loop_close(&opts.client_id, stream, opaque_map, opts.on_read_close_handler, graceful).await;
                                                 return;
@@ -268,7 +271,7 @@ impl Client {
                                     drop(requests);
                                 }
                                 Err(e) => {
-                                    warn!("{} failed to read frame {}", opts.client_id, e);
+                                    warn!("{} failed to read frame {}", opts.client_id, user_data(&e));
                                     let graceful = opts.closed.load(Ordering::SeqCst) || opts.on_close_cancel.is_cancelled();
                                     Self::on_read_loop_close(&opts.client_id, stream, opaque_map, opts.on_read_close_handler, graceful).await;
                                     return;
@@ -426,7 +429,10 @@ impl Dispatcher for Client {
             Err(e) => {
                 debug!(
                     "{} failed to write packet {} {} {}",
-                    self.client_id, opaque, op_code, e
+                    self.client_id,
+                    opaque,
+                    op_code,
+                    user_data(&e)
                 );
 
                 // opaque_guard will remove the entry from the opaque map when dropped.

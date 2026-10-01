@@ -1,0 +1,54 @@
+# Names of values that are safe to log without a redaction tag wherever they appear.
+#
+# A name belongs here only if every value it holds, anywhere in the SDK, is something the SDK
+# generated or a protocol constant: it reads the same for every deployment and identifies nobody.
+# Matching is by exact name, with no regard to type or scope: the variable, the field
+# (`self.pool_id` matches `pool_id`) or the method (`client.pool_id()` matches `pool_id`). If a
+# name is only safe in some places, leave it off and mark those call sites with not_sensitive()
+# instead.
+#
+# So a name that is safe in most places but not all stays off. `id` is one: it is a generated UUID
+# on SDK components, but the `couchbase` crate also uses it for document keys, and an HTTP request
+# id can be set by the caller. `reason` is another: it is an enum on retries, but server response
+# text on management errors.
+
+# Ids the SDK generates (UUIDs) for agents, components, pools, babysitters, clients and requests.
+# Endpoint ids are not on this list: they embed hostnames.
+id_clone
+agent_id
+analytics_id
+babysitter_id
+client_id
+conn_mgr_id
+mgmt_id
+pool_id
+query_id
+read_id
+search_id
+unsolicited_client_id
+
+# Cluster config and error map revisions.
+rev_id
+rev_epoch
+latest_rev_id
+latest_rev_epoch
+revision
+
+# Memcached protocol header fields, the HTTP method and the HTTP status code.
+opaque
+op_code
+status
+method
+
+# Durations, counts and retry bookkeeping.
+duration
+sleep
+to_sleep
+attempt_idx
+idx
+strong_count
+is_some
+reporter_interval
+sample_size
+# RetryRequest: the operation name, an SDK-generated id, flags and retry reasons.
+retry_info

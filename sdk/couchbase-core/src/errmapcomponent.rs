@@ -17,6 +17,7 @@
  */
 
 use crate::errmap::{parse_error_map, ErrMap};
+use crate::log_redaction::not_sensitive;
 use crate::memdx::status::Status;
 use arc_swap::{ArcSwapOption, AsRaw};
 use std::ptr;
@@ -76,7 +77,9 @@ impl ErrMapComponent {
                 }
             }
             Err(e) => {
-                tracing::info!("Failed to parse error map: {e}");
+                // A parse error describes the error map the server sent, which carries no
+                // application data.
+                tracing::info!("Failed to parse error map: {}", not_sensitive(&e));
             }
         }
     }

@@ -23,6 +23,7 @@ use crate::error::ErrorKind;
 use crate::httpcomponent::{HttpComponent, HttpComponentState};
 use crate::httpx::client::Client;
 use crate::httpx::request::Auth;
+use crate::log_redaction::{not_sensitive, system_data_list};
 use crate::mgmtx::bucket_helper::EnsureBucketHelper;
 use crate::mgmtx::bucket_settings::BucketDef;
 use crate::mgmtx::group_helper::EnsureGroupHelper;
@@ -102,9 +103,9 @@ impl<C: Client> MgmtComponent<C> {
 
     pub fn reconfigure(&self, config: MgmtComponentConfig) {
         debug!(
-            "Management component {} updating endpoints to {:?}",
-            self.id,
-            &config.endpoints.keys().collect::<Vec<_>>()
+            "Management component {} updating endpoints to [{}]",
+            not_sensitive(&self.id),
+            system_data_list(config.endpoints.keys()).quoted()
         );
 
         self.http_component.reconfigure(HttpComponentState::new(

@@ -24,6 +24,7 @@ use crate::kvclient::{
     UnsolicitedPacketSender,
 };
 use crate::kvclient_ops::{KvClientOps, ReconfigureAuthenticatorRequest};
+use crate::log_redaction::{not_sensitive, user_data};
 use crate::memdx::dispatcher::OrphanResponseHandler;
 use crate::memdx::op_auth_saslauto::Credentials;
 use crate::memdx::op_bootstrap::BootstrapOptions;
@@ -269,7 +270,7 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                 {
                     debug!(
                         "Client babysitter {} shutdown during connection throttling",
-                        &client_opts.id
+                        not_sensitive(&client_opts.id)
                     );
                     return;
                 };
@@ -277,7 +278,8 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                 let client_id = Uuid::new_v4().to_string();
                 info!(
                     "Client babysitter {} creating kvclient {}",
-                    &client_opts.id, &client_id
+                    not_sensitive(&client_opts.id),
+                    &client_id
                 );
                 let (on_close_tx, mut on_close_rx) = mpsc::channel(1);
 
@@ -306,8 +308,8 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                         let client = Arc::new(client);
                         debug!(
                             "Client babysitter {} changing client {} connection state to Connected",
-                            &client_opts.id,
-                            client.id()
+                            not_sensitive(&client_opts.id),
+                            not_sensitive(&client.id())
                         );
 
                         {
@@ -338,9 +340,11 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                             .state_change_handler
                             .send((client_opts.id.clone(), Some(client)))
                         {
+                            // A channel error renders as a fixed message, never its payload.
                             debug!(
                                 "Client babysitter {} failed to notify of new client {}",
-                                &client_opts.id, e
+                                not_sensitive(&client_opts.id),
+                                not_sensitive(&e)
                             );
                         }
 
@@ -351,11 +355,18 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                         tokio::spawn(async move {
                             select! {
                                 _ = on_close_opts.shutdown_token.cancelled() => {
-                                    debug!("Client babysitter {} shutdown during on_close wait", &on_close_opts.id);
+                                    debug!(
+                                        "Client babysitter {} shutdown during on_close wait",
+                                        not_sensitive(&on_close_opts.id)
+                                    );
                                     return;
                                 }
                                 _ = on_close_rx.recv() => {
-                                    debug!("Client babysitter {} detected client {} closed", &on_close_opts.id, &client_id);
+                                    debug!(
+                                        "Client babysitter {} detected client {} closed",
+                                        not_sensitive(&on_close_opts.id),
+                                        &client_id
+                                    );
                                 }
                             };
 
@@ -380,9 +391,12 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                                 .state_change_handler
                                 .send((on_close_opts.id.clone(), None))
                             {
+                                // A channel error renders as a fixed message, never its payload.
                                 debug!(
                                     "Client babysitter {} failed to notify of closed client {}: {}",
-                                    &on_close_opts.id, &client_id, e
+                                    not_sensitive(&on_close_opts.id),
+                                    &client_id,
+                                    not_sensitive(&e)
                                 );
                             }
 
@@ -397,18 +411,23 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                         client_opts
                             .fast_client
                             .store(Arc::new(StdKvClientBabysitterClientState { client: None }));
-                        let mut msg = format!(
-                            "Client babysitter {} error creating new client {}",
-                            client_opts.id, e
-                        );
                         if *e.kind() == ErrorKind::Shutdown {
                             return;
                         }
 
-                        if let Some(source) = e.source() {
-                            msg = format!("{msg} - {source}");
+                        match e.source() {
+                            Some(source) => info!(
+                                "Client babysitter {} error creating new client {} - {}",
+                                not_sensitive(&client_opts.id),
+                                user_data(&e),
+                                user_data(source)
+                            ),
+                            None => info!(
+                                "Client babysitter {} error creating new client {}",
+                                not_sensitive(&client_opts.id),
+                                user_data(&e)
+                            ),
                         }
-                        info!("{msg}");
 
                         let mut guard = state.lock().unwrap();
 
@@ -503,7 +522,7 @@ impl<K: KvClient + KvClientOps + 'static> KvClientBabysitter for StdKvClientBaby
         if !opts.on_demand_connect {
             debug!(
                 "Client babysitter {} starting to build new client",
-                &opts.id
+                not_sensitive(&opts.id)
             );
 
             Self::maybe_begin_client(Arc::new(ClientThreadOptions {
@@ -560,9 +579,15 @@ impl<K: KvClient + KvClientOps + 'static> KvClientBabysitter for StdKvClientBaby
         }));
 
         if is_building {
-            debug!("Client babysitter {} starting to rebuild client", &self.id);
+            debug!(
+                "Client babysitter {} starting to rebuild client",
+                not_sensitive(&self.id)
+            );
         } else {
-            debug!("Client babysitter {} already building client", &self.id);
+            debug!(
+                "Client babysitter {} already building client",
+                not_sensitive(&self.id)
+            );
         }
 
         loop {
@@ -580,9 +605,11 @@ impl<K: KvClient + KvClientOps + 'static> KvClientBabysitter for StdKvClientBaby
                     }
                 }
                 Err(e) => {
+                    // A channel error renders as a fixed message, never its payload.
                     debug!(
                         "Client babysitter {} failed to wait for client to become available: {}",
-                        &self.id, e
+                        not_sensitive(&self.id),
+                        not_sensitive(&e)
                     );
 
                     return Err(Error::new_message_error(format!(
@@ -652,9 +679,16 @@ impl<K: KvClient + KvClientOps + 'static> KvClientBabysitter for StdKvClientBaby
                         })
                         .await
                     {
-                        warn!("Error during reauth in babysitter {}: {}", client.id(), e);
+                        warn!(
+                            "Error during reauth in babysitter {}: {}",
+                            not_sensitive(&client.id()),
+                            user_data(&e)
+                        );
                         if let Err(e) = client.close().await {
-                            warn!("Error during close after failed reauth in babysitter {}", e);
+                            warn!(
+                                "Error during close after failed reauth in babysitter {}",
+                                user_data(&e)
+                            );
                         }
                     }
                 }
@@ -668,7 +702,7 @@ impl<K: KvClient + KvClientOps + 'static> KvClientBabysitter for StdKvClientBaby
     }
 
     async fn close(&self) -> error::Result<()> {
-        info!("Closing babysitter {}", self.id);
+        info!("Closing babysitter {}", not_sensitive(&self.id));
         self.shutdown_token.cancel();
 
         let client = {
@@ -693,6 +727,6 @@ impl<K: KvClient + KvClientOps + 'static> KvClientBabysitter for StdKvClientBaby
 impl<K: KvClient> Drop for StdKvClientBabysitter<K> {
     fn drop(&mut self) {
         self.shutdown_token.cancel();
-        info!("Dropping StdKvClientBabysitter {}", self.id);
+        info!("Dropping StdKvClientBabysitter {}", not_sensitive(&self.id));
     }
 }

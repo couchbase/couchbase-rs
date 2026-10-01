@@ -16,6 +16,7 @@
  *
  */
 
+use crate::log_redaction::{not_sensitive, system_data, user_data};
 use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::error::Error as StdError;
@@ -138,7 +139,8 @@ where
         let id = opts.id;
         info!(
             "Creating new client pool {} for {}",
-            &id, &opts.target.address
+            not_sensitive(&id),
+            system_data(&opts.target.address)
         );
 
         let fast_map = Arc::new(ArcSwap::from_pointee(KvClientPoolFastMap {
@@ -156,7 +158,9 @@ where
                 let babysitter_id = Uuid::new_v4().to_string();
                 info!(
                     "Client pool {} creating babysitter {} (idx={})",
-                    &id, &babysitter_id, idx
+                    not_sensitive(&id),
+                    &babysitter_id,
+                    idx
                 );
                 let babysitter = KvClientBabysitter::new(KvClientBabysitterOptions {
                     id: babysitter_id,
@@ -308,7 +312,7 @@ where
     }
 
     async fn close(&self) -> Result<()> {
-        info!("Closing pool {}", self.id);
+        info!("Closing pool {}", not_sensitive(&self.id));
 
         self.shutdown_token.cancel();
 
@@ -318,7 +322,7 @@ where
         let mut babysitters = self.babysitters.lock().await;
         for babysitter_entry in babysitters.drain(..) {
             if let Err(e) = babysitter_entry.babysitter.close().await {
-                debug!("Failed to close babysitter: {e:?}");
+                debug!("Failed to close babysitter: {:?}", user_data(&e));
             }
         }
 
@@ -352,6 +356,6 @@ where
 {
     fn drop(&mut self) {
         self.shutdown_token.cancel();
-        info!("Dropping StdKvClientPool {}", self.id,);
+        info!("Dropping StdKvClientPool {}", not_sensitive(&self.id),);
     }
 }

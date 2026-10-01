@@ -16,7 +16,6 @@ authors = [
 form_urlencoded = "1.2"
 hickory-resolver = { version = "0.26.1", features = ["tokio", "system-config"], default-features = false, optional = true }
 regex = "1.12"
-tracing = { version = "0.1.44", features = ["log"] }
 url = "2.5"
 
 [dev-dependencies]
