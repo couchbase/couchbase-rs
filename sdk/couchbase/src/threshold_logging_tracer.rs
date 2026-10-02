@@ -807,6 +807,70 @@ mod tests {
         }
     }
 
+    // A query nests three spans: the SDK's operation span, couchbase-core's query span, and the
+    // dispatch span for the HTTP request. The tracer stops walking up at the first span outside
+    // couchbase::tracing, so couchbase-core's span has to be under that target too, or the dispatch
+    // never reaches the operation it belongs to.
+    fn query_span_nesting(middle_target_is_couchbase: bool) -> Vec<SpanInfo> {
+        let (tx, mut rx) = unbounded_channel::<SpanInfo>();
+        let layer = ThresholdLoggingTracer::new_with_sender(zero_thresholds(), tx);
+        let subscriber = tracing_subscriber::registry().with(layer);
+
+        tracing::subscriber::with_default(subscriber, || {
+            let root = tracing::trace_span!(
+                target: "couchbase::tracing",
+                "query",
+                db.operation.name = "query",
+                couchbase.service = "query",
+            );
+            let _root = root.enter();
+            let middle = if middle_target_is_couchbase {
+                tracing::trace_span!(target: "couchbase::tracing", "query")
+            } else {
+                tracing::trace_span!(target: "couchbase_core::queryx::query", "query")
+            };
+            let _middle = middle.enter();
+            let dispatch = tracing::trace_span!(
+                target: "couchbase::tracing",
+                "dispatch_to_server",
+                network.peer.address = "10.0.0.1",
+                network.peer.port = "8093",
+            );
+            let _dispatch = dispatch.enter();
+        });
+
+        let mut sent = vec![];
+        while let Ok(info) = rx.try_recv() {
+            sent.push(info);
+        }
+        sent
+    }
+
+    #[tokio::test]
+    async fn a_dispatch_under_a_foreign_span_is_lost() {
+        let sent = query_span_nesting(false);
+
+        assert_eq!(sent.len(), 1, "{sent:?}");
+        assert!(sent[0].last_dispatch_duration_us.is_none());
+        assert!(sent[0].last_remote_socket.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_dispatch_under_an_inner_couchbase_span_reaches_the_root() {
+        let sent = query_span_nesting(true);
+
+        assert_eq!(sent.len(), 1, "only the operation is reported: {sent:?}");
+        assert_eq!(sent[0].operation_name, "query");
+        assert!(sent[0].last_dispatch_duration_us.is_some());
+        assert_eq!(
+            sent[0]
+                .last_remote_socket
+                .as_ref()
+                .and_then(|s| s.ip.as_deref()),
+            Some("10.0.0.1")
+        );
+    }
+
     #[tokio::test]
     async fn layer_records_service_set_via_span_record_after_creation() {
         let (tx, mut rx) = unbounded_channel::<SpanInfo>();
