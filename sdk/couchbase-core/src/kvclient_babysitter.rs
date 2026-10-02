@@ -24,6 +24,7 @@ use crate::kvclient::{
     UnsolicitedPacketSender,
 };
 use crate::kvclient_ops::{KvClientOps, ReconfigureAuthenticatorRequest};
+use crate::log_redaction::{not_sensitive, user_data};
 use crate::memdx::dispatcher::OrphanResponseHandler;
 use crate::memdx::op_auth_saslauto::Credentials;
 use crate::memdx::op_bootstrap::BootstrapOptions;
@@ -338,9 +339,11 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                             .state_change_handler
                             .send((client_opts.id.clone(), Some(client)))
                         {
+                            // A channel error renders as a fixed message, never its payload.
                             debug!(
                                 "Client babysitter {} failed to notify of new client {}",
-                                &client_opts.id, e
+                                &client_opts.id,
+                                not_sensitive(&e)
                             );
                         }
 
@@ -380,9 +383,12 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                                 .state_change_handler
                                 .send((on_close_opts.id.clone(), None))
                             {
+                                // A channel error renders as a fixed message, never its payload.
                                 debug!(
                                     "Client babysitter {} failed to notify of closed client {}: {}",
-                                    &on_close_opts.id, &client_id, e
+                                    &on_close_opts.id,
+                                    &client_id,
+                                    not_sensitive(&e)
                                 );
                             }
 
@@ -397,18 +403,23 @@ impl<K: KvClient + 'static> StdKvClientBabysitter<K> {
                         client_opts
                             .fast_client
                             .store(Arc::new(StdKvClientBabysitterClientState { client: None }));
-                        let mut msg = format!(
-                            "Client babysitter {} error creating new client {}",
-                            client_opts.id, e
-                        );
                         if *e.kind() == ErrorKind::Shutdown {
                             return;
                         }
 
-                        if let Some(source) = e.source() {
-                            msg = format!("{msg} - {source}");
+                        match e.source() {
+                            Some(source) => info!(
+                                "Client babysitter {} error creating new client {} - {}",
+                                client_opts.id,
+                                user_data(&e),
+                                user_data(source)
+                            ),
+                            None => info!(
+                                "Client babysitter {} error creating new client {}",
+                                client_opts.id,
+                                user_data(&e)
+                            ),
                         }
-                        info!("{msg}");
 
                         let mut guard = state.lock().unwrap();
 
@@ -580,9 +591,11 @@ impl<K: KvClient + KvClientOps + 'static> KvClientBabysitter for StdKvClientBaby
                     }
                 }
                 Err(e) => {
+                    // A channel error renders as a fixed message, never its payload.
                     debug!(
                         "Client babysitter {} failed to wait for client to become available: {}",
-                        &self.id, e
+                        &self.id,
+                        not_sensitive(&e)
                     );
 
                     return Err(Error::new_message_error(format!(
@@ -652,9 +665,16 @@ impl<K: KvClient + KvClientOps + 'static> KvClientBabysitter for StdKvClientBaby
                         })
                         .await
                     {
-                        warn!("Error during reauth in babysitter {}: {}", client.id(), e);
+                        warn!(
+                            "Error during reauth in babysitter {}: {}",
+                            client.id(),
+                            user_data(&e)
+                        );
                         if let Err(e) = client.close().await {
-                            warn!("Error during close after failed reauth in babysitter {}", e);
+                            warn!(
+                                "Error during close after failed reauth in babysitter {}",
+                                user_data(&e)
+                            );
                         }
                     }
                 }

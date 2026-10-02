@@ -21,6 +21,7 @@ use crate::kvclient::{KvClient, KvClientBootstrapOptions, UnsolicitedPacketSende
 use crate::kvclient_babysitter::{KvClientBabysitter, KvTarget};
 use crate::kvclient_ops::KvClientOps;
 use crate::kvclientpool::{KvClientPool, KvClientPoolOptions};
+use crate::log_redaction::{system_data_list, user_data};
 use crate::memdx::dispatcher::OrphanResponseHandler;
 use crate::memdx::request::PingRequest;
 use crate::memdx::response::PingResponse;
@@ -194,9 +195,9 @@ where
         add_only: bool,
     ) -> error::Result<()> {
         debug!(
-            "Kvclientmanager {} updating endpoints to {:?}",
+            "Kvclientmanager {} updating endpoints to [{}]",
             self.id,
-            endpoints.keys()
+            system_data_list(endpoints.keys()).quoted()
         );
 
         let mut slow_state = self.slow_state.lock().await;
@@ -251,7 +252,7 @@ where
             for pool in old_pools.into_values() {
                 let id = pool.id();
                 if let Err(e) = pool.close().await {
-                    debug!("Failed to close pool {id}: {e}");
+                    debug!("Failed to close pool {id}: {}", user_data(&e));
                 };
             }
         }

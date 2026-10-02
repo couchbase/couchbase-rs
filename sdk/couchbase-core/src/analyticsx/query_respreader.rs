@@ -16,6 +16,7 @@
  *
  */
 
+use crate::log_redaction::user_data;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -98,7 +99,7 @@ impl QueryRespReader {
             let body = match resp.bytes().await {
                 Ok(b) => b,
                 Err(e) => {
-                    debug!("Failed to read response body on error {}", &e);
+                    debug!("Failed to read response body on error {}", user_data(&e));
                     return Err(Error::new_http_error(
                         e,
                         endpoint,

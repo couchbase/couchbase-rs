@@ -43,6 +43,10 @@ pub struct AgentOptions {
     pub http_config: HttpConfig,
     pub tcp_keep_alive_time: Option<Duration>,
     pub orphan_response_handler: Option<OrphanResponseHandler>,
+    /// Wrap sensitive values in log output in redaction tags. See
+    /// [`log_redaction`](crate::log_redaction). Redaction is process-wide, so creating an agent
+    /// with this set turns it on for every agent, and creating one without it never turns it off.
+    pub log_redaction: bool,
 }
 
 impl Debug for AgentOptions {
@@ -58,6 +62,7 @@ impl Debug for AgentOptions {
             .field("kv_config", &self.kv_config)
             .field("http_config", &self.http_config)
             .field("tcp_keep_alive_time", &self.tcp_keep_alive_time)
+            .field("log_redaction", &self.log_redaction)
             .finish()
     }
 }
@@ -77,6 +82,7 @@ impl AgentOptions {
             http_config: HttpConfig::default(),
             tcp_keep_alive_time: None,
             orphan_response_handler: None,
+            log_redaction: false,
         }
     }
 
@@ -132,6 +138,11 @@ impl AgentOptions {
 
     pub fn tcp_keep_alive_time(mut self, tcp_keep_alive: Duration) -> Self {
         self.tcp_keep_alive_time = Some(tcp_keep_alive);
+        self
+    }
+
+    pub fn log_redaction(mut self, log_redaction: bool) -> Self {
+        self.log_redaction = log_redaction;
         self
     }
 
@@ -443,7 +454,7 @@ impl Display for AgentOptions {
 
         write!(
             f,
-            "{{ seed_config: {}, auth_mechanisms: {:?}, tls_config: {}, bucket_name: {:?}, network: {:?}, compression_config: {}, config_poller_config: {}, kv_config: {}, http_config: {}, tcp_keep_alive_time: {:?}, orphan_response_handler: {} }}",
+            "{{ seed_config: {}, auth_mechanisms: {:?}, tls_config: {}, bucket_name: {:?}, network: {:?}, compression_config: {}, config_poller_config: {}, kv_config: {}, http_config: {}, tcp_keep_alive_time: {:?}, orphan_response_handler: {}, log_redaction: {} }}",
             self.seed_config,
             self.auth_mechanisms,
             tls_config,
@@ -455,6 +466,7 @@ impl Display for AgentOptions {
             self.http_config,
             self.tcp_keep_alive_time,
             if self.orphan_response_handler.is_some() { "Some" } else { "None" },
+            self.log_redaction,
         )
     }
 }

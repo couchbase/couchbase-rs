@@ -27,6 +27,7 @@ use crate::tracing::{
     SPAN_ATTRIB_OPERATION_ID_KEY, SPAN_ATTRIB_OPERATION_KEY, SPAN_ATTRIB_SERVER_DURATION_KEY,
     SPAN_ATTRIB_SERVICE_KEY, SPAN_NAME_DISPATCH_TO_SERVER, SPAN_NAME_REQUEST_ENCODING,
 };
+use couchbase_core::log_redaction::user_data;
 
 const COUCHBASE_TARGET_PREFIX: &str = "couchbase::tracing";
 
@@ -336,8 +337,12 @@ impl ThresholdLoggingTracer {
 
         if !log_output.is_empty() {
             match serde_json::to_string(&log_output) {
+                // Tagged as one span around the whole report rather than per value, so that the
+                // report stays parseable JSON. It carries the remote socket, and the operation id,
+                // which for a query is the client context id the application may have chosen, so
+                // the report takes the strictest category: user data.
                 Ok(log_output_str) => {
-                    tracing::warn!("Operations over threshold: {}", log_output_str)
+                    tracing::warn!("Operations over threshold: {}", user_data(&log_output_str))
                 }
                 Err(_) => tracing::error!("Failed to serialize threshold log output"),
             }
@@ -805,6 +810,70 @@ mod tests {
             search_threshold_us: 0,
             management_threshold_us: 0,
         }
+    }
+
+    // A query nests three spans: the SDK's operation span, couchbase-core's query span, and the
+    // dispatch span for the HTTP request. The tracer stops walking up at the first span outside
+    // couchbase::tracing, so couchbase-core's span has to be under that target too, or the dispatch
+    // never reaches the operation it belongs to.
+    fn query_span_nesting(middle_target_is_couchbase: bool) -> Vec<SpanInfo> {
+        let (tx, mut rx) = unbounded_channel::<SpanInfo>();
+        let layer = ThresholdLoggingTracer::new_with_sender(zero_thresholds(), tx);
+        let subscriber = tracing_subscriber::registry().with(layer);
+
+        tracing::subscriber::with_default(subscriber, || {
+            let root = tracing::trace_span!(
+                target: "couchbase::tracing",
+                "query",
+                db.operation.name = "query",
+                couchbase.service = "query",
+            );
+            let _root = root.enter();
+            let middle = if middle_target_is_couchbase {
+                tracing::trace_span!(target: "couchbase::tracing", "query")
+            } else {
+                tracing::trace_span!(target: "couchbase_core::queryx::query", "query")
+            };
+            let _middle = middle.enter();
+            let dispatch = tracing::trace_span!(
+                target: "couchbase::tracing",
+                "dispatch_to_server",
+                network.peer.address = "10.0.0.1",
+                network.peer.port = "8093",
+            );
+            let _dispatch = dispatch.enter();
+        });
+
+        let mut sent = vec![];
+        while let Ok(info) = rx.try_recv() {
+            sent.push(info);
+        }
+        sent
+    }
+
+    #[tokio::test]
+    async fn a_dispatch_under_a_foreign_span_is_lost() {
+        let sent = query_span_nesting(false);
+
+        assert_eq!(sent.len(), 1, "{sent:?}");
+        assert!(sent[0].last_dispatch_duration_us.is_none());
+        assert!(sent[0].last_remote_socket.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_dispatch_under_an_inner_couchbase_span_reaches_the_root() {
+        let sent = query_span_nesting(true);
+
+        assert_eq!(sent.len(), 1, "only the operation is reported: {sent:?}");
+        assert_eq!(sent[0].operation_name, "query");
+        assert!(sent[0].last_dispatch_duration_us.is_some());
+        assert_eq!(
+            sent[0]
+                .last_remote_socket
+                .as_ref()
+                .and_then(|s| s.ip.as_deref()),
+            Some("10.0.0.1")
+        );
     }
 
     #[tokio::test]

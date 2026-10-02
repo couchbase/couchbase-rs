@@ -22,6 +22,7 @@ use crate::configfetcher::{ConfigFetcherMemd, ConfigFetcherMemdOptions};
 use crate::configparser::ConfigParser;
 use crate::configwatcher::{ConfigWatcherMemd, ConfigWatcherMemdConfig, ConfigWatcherMemdOptions};
 use crate::kvendpointclientmanager::KvEndpointClientManager;
+use crate::log_redaction::{metadata, not_sensitive, system_data, user_data};
 use crate::nmvbhandler::ConfigUpdater;
 use crate::parsedconfig::{ParsedConfig, ParsedConfigBucket};
 use std::cmp::Ordering;
@@ -139,7 +140,11 @@ impl<M: KvEndpointClientManager + 'static> ConfigManagerMemdInner<M> {
                 {
                     Ok(c) => c,
                     Err(e) => {
-                        debug!("Out-of-band fetch from {endpoint_id} failed: {e}");
+                        debug!(
+                            "Out-of-band fetch from {} failed: {}",
+                            system_data(&endpoint_id),
+                            user_data(&e)
+                        );
                         return None;
                     }
                 };
@@ -201,7 +206,10 @@ impl<M: KvEndpointClientManager + 'static> ConfigManagerMemdInner<M> {
             drop(latest_config);
 
             if let Err(e) = latest_version_tx.send(new_latest_version) {
-                warn!("Failed to update config watcher with latest version: {e}");
+                warn!(
+                    "Failed to update config watcher with latest version: {}",
+                    user_data(&e)
+                );
             }
 
             return Some(parsed_config);
@@ -222,7 +230,8 @@ impl<M: KvEndpointClientManager + 'static> ConfigManagerMemdInner<M> {
         if Self::bucket_type_changed(&new_config.bucket, &old_config.bucket) {
             debug!(
                 "Switching config due to changed bucket type (bucket takeover) old: {:?} new: {:?}",
-                old_config.bucket, new_config.bucket
+                metadata(&old_config.bucket),
+                metadata(&new_config.bucket)
             );
             return true;
         } else if let Some(cmp) = new_config.partial_cmp(old_config) {
@@ -263,7 +272,8 @@ impl<M: KvEndpointClientManager + 'static> ConfigManagerMemdInner<M> {
                             debug!("Config watcher exited");
                             return;
                         } else {
-                            warn!("Config watcher channel error: {e}");
+                            // A channel error renders as a fixed message, never its payload.
+                            warn!("Config watcher channel error: {}", not_sensitive(&e));
                         }
                     }
                 }

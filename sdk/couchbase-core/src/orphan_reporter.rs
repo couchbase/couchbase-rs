@@ -16,6 +16,7 @@
  *
  */
 
+use crate::log_redaction::system_data;
 use crate::memdx::extframe::decode_res_ext_frames;
 use crate::memdx::packet::ResponsePacket;
 use crate::options::orphan_reporter::OrphanReporterConfig;
@@ -148,7 +149,11 @@ impl OrphanReporter {
                         }
                         let mut write_guard = heap_clone.write().unwrap();
                         let obj = Self::create_log_object("kv".to_string(), mem::take(&mut write_guard), count);
-                        warn!("Orphaned responses observed: {}", obj);
+                        // Tagged as one span around the whole report rather than per value,
+                        // so that the report stays parseable JSON. It carries local and remote
+                        // sockets, and otherwise only durations and SDK-generated ids, so it is
+                        // system data.
+                        warn!("Orphaned responses observed: {}", system_data(&obj));
                     }
                 }
             }

@@ -19,6 +19,7 @@
 use crate::error;
 use crate::results::kv_results::{LookupInResult, LookupInResultEntry};
 use crate::subdoc::lookup_in_specs::LookupInSpec;
+use couchbase_core::log_redaction::user_data;
 use serde_json::value::Map;
 use serde_json::{from_slice, to_vec, Value};
 use tracing::{error, warn};
@@ -34,7 +35,7 @@ pub(crate) fn build_from_subdoc_entries(
                 error::ErrorKind::PathNotFound => {
                     warn!(
                         "projection path '{}' not found in subdoc response; skipping",
-                        spec.path
+                        user_data(&spec.path)
                     );
                     continue;
                 }
@@ -81,7 +82,7 @@ pub(crate) fn build_from_full_doc(
         } else {
             warn!(
                 "projection path '{}' not found in document; skipping",
-                projection
+                user_data(&projection)
             );
             continue;
         }

@@ -16,6 +16,7 @@
  *
  */
 
+use crate::log_redaction::user_data;
 use tokio::select;
 use tokio::time::{sleep, Instant};
 use tracing::warn;
@@ -106,7 +107,7 @@ impl OpBootstrap {
                 {
                     Ok(r) => Some(r),
                     Err(e) => {
-                        warn!("Hello failed {e}");
+                        warn!("Hello failed {}", user_data(&e));
                         None
                     }
                 };
@@ -121,7 +122,7 @@ impl OpBootstrap {
             {
                 Ok(r) => Some(r),
                 Err(e) => {
-                    warn!("Get error map failed {e}");
+                    warn!("Get error map failed {}", user_data(&e));
                     None
                 }
             };
@@ -134,7 +135,7 @@ impl OpBootstrap {
             {
                 Ok(_) => {}
                 Err(e) => {
-                    warn!("Auth failed {e}");
+                    warn!("Auth failed {}", user_data(&e));
                     return Err(e);
                 }
             };
@@ -146,7 +147,7 @@ impl OpBootstrap {
             {
                 Ok(r) => Some(r),
                 Err(e) => {
-                    warn!("Select bucket failed {e}");
+                    warn!("Select bucket failed {}", user_data(&e));
                     return Err(e);
                 }
             };
@@ -161,7 +162,7 @@ impl OpBootstrap {
             {
                 Ok(r) => Some(r),
                 Err(e) => {
-                    warn!("Get cluster config failed {e}");
+                    warn!("Get cluster config failed {}", user_data(&e));
                     None
                 }
             }

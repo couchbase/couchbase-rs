@@ -24,6 +24,7 @@ use crate::error::ErrorKind;
 use crate::httpcomponent::{HttpComponent, HttpComponentState};
 use crate::httpx::client::Client;
 use crate::httpx::request::Auth;
+use crate::log_redaction::system_data_list;
 use crate::options::analytics::{AnalyticsOptions, GetPendingMutationsOptions};
 use crate::results::analytics::AnalyticsResultStream;
 use crate::retry::{orchestrate_retries, RetryManager, RetryRequest};
@@ -70,9 +71,9 @@ impl<C: Client + 'static> AnalyticsComponent<C> {
 
     pub fn reconfigure(&self, config: AnalyticsComponentConfig) {
         debug!(
-            "Analytics component {} updating endpoints to {:?}",
+            "Analytics component {} updating endpoints to [{}]",
             self.id,
-            &config.endpoints.keys().collect::<Vec<_>>()
+            system_data_list(config.endpoints.keys()).quoted()
         );
 
         self.http_component.reconfigure(HttpComponentState::new(
