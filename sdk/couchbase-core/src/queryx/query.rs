@@ -190,6 +190,7 @@ impl<C: Client> Query<C> {
     }
 
     #[instrument(
+    target = "couchbase::tracing",
     skip_all,
     level = Level::TRACE,
     name = "query",
