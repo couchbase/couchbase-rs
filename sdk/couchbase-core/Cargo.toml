@@ -2,6 +2,7 @@
 name = "couchbase-core"
 version = "1.0.1"
 edition = "2021"
+rust-version = "1.88"
 description = "Couchbase SDK core networking and protocol implementation, not intended for direct use"
 license = "Apache-2.0"
 readme = "../../README.md"

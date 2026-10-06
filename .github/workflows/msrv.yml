@@ -1,0 +1,28 @@
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+name: MSRV check
+
+jobs:
+  msrv_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check published crates build on their declared rust-version
+        env:
+          # Cargo.lock is not committed, so resolve dependency versions that support the declared rust-version
+          CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
+        run: |
+          for crate in couchbase-connstr couchbase-core couchbase; do
+            msrv=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' "sdk/$crate/Cargo.toml")
+            if [ -z "$msrv" ]; then
+              echo "sdk/$crate/Cargo.toml does not declare rust-version"
+              exit 1
+            fi
+            echo "Checking $crate on Rust $msrv"
+            rustup toolchain install "$msrv" --profile minimal
+            # +toolchain overrides rust-toolchain.toml, which pins stable
+            cargo +"$msrv" check -p "$crate" --all-features
+          done
