@@ -1,6 +1,6 @@
 [package]
 name = "couchbase-connstr"
-version = "1.0.1"
+version = "1.1.0"
 edition = "2021"
 rust-version = "1.88"
 description = "Couchbase SDK connection string parsing and DNS resolution, not intended for direct use"
