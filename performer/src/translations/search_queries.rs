@@ -125,6 +125,12 @@ impl TryFrom<SearchQuery> for Query {
                 let match_none_query = MatchNoneQuery::try_from(query)?;
                 Ok(Query::MatchNone(match_none_query))
             }
+            crate::proto::protocol::sdk::search::search_query::Query::CustomScore(_) => {
+                Err(Error::unimplemented("CustomScore is unimplemented"))
+            }
+            crate::proto::protocol::sdk::search::search_query::Query::CustomFilter(_) => {
+                Err(Error::unimplemented("CustomFilter is unimplemented"))
+            }
         }
     }
 }

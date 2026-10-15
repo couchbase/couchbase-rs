@@ -1070,7 +1070,7 @@ impl From<&couchbase_core::queryx::error::ServerErrorKind> for ErrorKind {
                 ..
             } => ErrorKind::InvalidArgument(InvalidArgumentErrorKind {
                 msg: reason.clone(),
-                arg: Some(argument.clone()),
+                arg: argument.clone(),
             }),
             couchbase_core::queryx::error::ServerErrorKind::BuildAlreadyInProgress => {
                 ErrorKind::OtherFailure(value.to_string())
@@ -1194,6 +1194,14 @@ impl From<&couchbase_core::searchx::error::ServerErrorKind> for ErrorKind {
             couchbase_core::searchx::error::ServerErrorKind::RateLimitedFailure => {
                 ErrorKind::RateLimitedFailure
             }
+            couchbase_core::searchx::error::ServerErrorKind::InvalidArgument {
+                argument,
+                reason,
+                ..
+            } => ErrorKind::InvalidArgument(InvalidArgumentErrorKind {
+                msg: reason.clone(),
+                arg: argument.clone(),
+            }),
             couchbase_core::searchx::error::ServerErrorKind::Unknown => {
                 ErrorKind::OtherFailure(value.to_string())
             }
@@ -1290,7 +1298,7 @@ impl From<&couchbase_core::mgmtx::error::ServerErrorKind> for ErrorKind {
             }
             couchbase_core::mgmtx::error::ServerErrorKind::ServerInvalidArg { arg, reason } => {
                 ErrorKind::InvalidArgument(InvalidArgumentErrorKind {
-                    arg: Some(arg.clone()),
+                    arg: arg.clone(),
                     msg: reason.clone(),
                 })
             }
