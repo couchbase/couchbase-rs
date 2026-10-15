@@ -117,38 +117,32 @@ impl QueryRespReader {
                 }
             };
 
-            let errors: QueryErrorResponse = match serde_json::from_slice(&body) {
-                Ok(e) => e,
-                Err(e) => {
-                    return Err(Error::new_message_error(
-                        format!(
-                        "non-200 status code received {status_code} but parsing error response body failed {e}"
-                    ),
-                        None,
-                        None,
-                        None,
+            let msg = match serde_json::from_slice::<QueryErrorResponse>(&body) {
+                Ok(resp) if !resp.errors.is_empty() => {
+                    return Err(Self::parse_errors(
+                        &resp.errors,
+                        endpoint,
+                        statement,
+                        client_context_id,
+                        status_code,
                     ));
                 }
+                Ok(_) => format!(
+                    "Non-200 status code received {status_code} but response body contained no errors"
+                ),
+                Err(e) => format!(
+                    "non-200 status code received {status_code} but parsing error response body failed {e}"
+                ),
             };
 
-            if errors.errors.is_empty() {
-                return Err(Error::new_message_error(
-                    format!(
-                        "Non-200 status code received {status_code} but response body contained no errors",
-                    ),
-                    None,
-                    None,
+            if status_code == StatusCode::BAD_REQUEST {
+                return Err(Error::new_invalid_argument_error(
+                    String::from_utf8_lossy(&body),
                     None,
                 ));
             }
 
-            return Err(Self::parse_errors(
-                &errors.errors,
-                endpoint,
-                statement,
-                client_context_id,
-                status_code,
-            ));
+            return Err(Error::new_message_error(msg, None, None, None));
         }
 
         let stream = resp.bytes_stream();
@@ -336,7 +330,7 @@ impl QueryRespReader {
             .iter()
             .map(|error| {
                 ErrorDesc::new(
-                    Self::parse_error_kind(error),
+                    Self::parse_error_kind(error, status_code),
                     error.code,
                     error.msg.clone(),
                     error.retry.unwrap_or_default(),
@@ -389,7 +383,7 @@ impl QueryRespReader {
         }
     }
 
-    fn parse_error_kind(error: &QueryError) -> ServerErrorKind {
+    fn parse_error_kind(error: &QueryError, status_code: StatusCode) -> ServerErrorKind {
         let err_code = error.code;
         let err_code_group = err_code / 1000;
 
@@ -411,7 +405,7 @@ impl QueryRespReader {
             let msg = error.msg.to_lowercase();
             if msg.contains("not enough") && msg.contains("replica") {
                 ServerErrorKind::InvalidArgument {
-                    argument: "num_replicas".to_string(),
+                    argument: Some("num_replicas".to_string()),
                     reason: "not enough indexer nodes to create index with replica count"
                         .to_string(),
                 }
@@ -474,6 +468,11 @@ impl QueryRespReader {
             ServerErrorKind::ParsingFailure
         } else if err_code == 13014 || err_code == 2120 {
             ServerErrorKind::AuthenticationFailure
+        } else if status_code == StatusCode::BAD_REQUEST {
+            ServerErrorKind::InvalidArgument {
+                argument: None,
+                reason: error.msg.clone(),
+            }
         } else {
             ServerErrorKind::Unknown
         }

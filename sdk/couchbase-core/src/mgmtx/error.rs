@@ -186,7 +186,7 @@ pub enum ServerErrorKind {
     BucketExists,
     BucketNotFound,
     FlushDisabled,
-    ServerInvalidArg { arg: String, reason: String },
+    ServerInvalidArg { arg: Option<String>, reason: String },
     SampleAlreadyLoaded,
     InvalidSampleBucket,
     BucketUuidMismatch,
@@ -211,7 +211,11 @@ impl Display for ServerErrorKind {
             ServerErrorKind::BucketNotFound => write!(f, "bucket not found"),
             ServerErrorKind::FlushDisabled => write!(f, "flush disabled"),
             ServerErrorKind::ServerInvalidArg { arg, reason } => {
-                write!(f, "server invalid argument: {arg} - {reason}")
+                if let Some(arg) = arg {
+                    write!(f, "server invalid argument: {arg} - {reason}")
+                } else {
+                    write!(f, "server invalid argument: {reason}")
+                }
             }
             ServerErrorKind::BucketUuidMismatch => write!(f, "bucket uuid mismatch"),
             ServerErrorKind::UserNotFound => write!(f, "user not found"),
