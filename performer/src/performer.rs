@@ -100,6 +100,7 @@ impl PerformerService for Performer {
             sdk::Caps::SdkStableOtelSemanticConventionsEmittedByDefault,
             sdk::Caps::SdkQuery2120,
             sdk::Caps::SdkGetReplica,
+            sdk::Caps::SdkHttp400InvalidArgument,
         ]
         .into_iter()
         .map(|c| c.into())

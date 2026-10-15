@@ -247,6 +247,10 @@ pub enum ServerErrorKind {
     NoIndexPartitionsFound,
     UnsupportedFeature,
     RateLimitedFailure,
+    InvalidArgument {
+        argument: Option<String>,
+        reason: String,
+    },
     Unknown,
 }
 
@@ -264,6 +268,16 @@ impl Display for ServerErrorKind {
             ServerErrorKind::NoIndexPartitionsFound => write!(f, "no index partitions found"),
             ServerErrorKind::UnsupportedFeature => write!(f, "unsupported feature"),
             ServerErrorKind::RateLimitedFailure => write!(f, "rate limited failure"),
+            ServerErrorKind::InvalidArgument { argument, reason } => {
+                if let Some(argument) = argument {
+                    write!(
+                        f,
+                        "server invalid argument: (argument: {argument}, reason: {reason})"
+                    )
+                } else {
+                    write!(f, "server invalid argument: (reason: {reason})")
+                }
+            }
             ServerErrorKind::Unknown => write!(f, "unknown error"),
         }
     }
@@ -296,6 +310,7 @@ impl MetricsName for ServerErrorKind {
             ServerErrorKind::NoIndexPartitionsFound => "searchx.NoIndexPartitionsFound",
             ServerErrorKind::UnsupportedFeature => "searchx.UnsupportedFeature",
             ServerErrorKind::RateLimitedFailure => "searchx.RateLimitedFailure",
+            ServerErrorKind::InvalidArgument { .. } => "searchx.InvalidArgument",
             ServerErrorKind::Unknown => "searchx._OTHER",
         }
     }

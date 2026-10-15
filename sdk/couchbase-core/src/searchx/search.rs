@@ -662,6 +662,11 @@ pub(crate) fn decode_common_error(
         error::ServerErrorKind::NoIndexPartitionsPlanned
     } else if body_str.contains("no local pindexes found") {
         error::ServerErrorKind::NoIndexPartitionsFound
+    } else if status == 400 {
+        error::ServerErrorKind::InvalidArgument {
+            argument: None,
+            reason: body_str.to_string(),
+        }
     } else if status == 500 {
         error::ServerErrorKind::Internal
     } else if status == 429 {
