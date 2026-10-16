@@ -176,15 +176,18 @@ impl<C: Client> Management<C> {
                 let key = ia.0;
                 if FIELD_NAME_MAP.contains_key(&key) {
                     error::ServerErrorKind::ServerInvalidArg {
-                        arg: key,
+                        arg: Some(key),
                         reason: ia.1,
                     }
                 } else {
-                    error::ServerErrorKind::Unknown
+                    error::ServerErrorKind::ServerInvalidArg {
+                        arg: None,
+                        reason: body_str.to_string(),
+                    }
                 }
             } else if lower_body_str.contains("not allowed on this type of bucket") {
                 error::ServerErrorKind::ServerInvalidArg {
-                    arg: "historyEnabled".to_string(),
+                    arg: Some("historyEnabled".to_string()),
                     reason: body_str.to_string(),
                 }
             } else if lower_body_str.contains("already loaded") {
@@ -192,7 +195,10 @@ impl<C: Client> Management<C> {
             } else if lower_body_str.contains("not a valid sample") {
                 error::ServerErrorKind::InvalidSampleBucket
             } else {
-                error::ServerErrorKind::Unknown
+                error::ServerErrorKind::ServerInvalidArg {
+                    arg: None,
+                    reason: body_str.to_string(),
+                }
             }
         } else if status == 404 {
             error::ServerErrorKind::UnsupportedFeature {

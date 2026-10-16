@@ -360,7 +360,10 @@ pub enum ServerErrorKind {
     AuthenticationFailure,
     ParsingFailure,
     ScanWaitTimeout,
-    InvalidArgument { argument: String, reason: String },
+    InvalidArgument {
+        argument: Option<String>,
+        reason: String,
+    },
     TemporaryFailure,
     JobQueueFull,
     IndexNotFound,
@@ -379,10 +382,16 @@ impl Display for ServerErrorKind {
         match self {
             ServerErrorKind::Internal => write!(f, "internal server error"),
             ServerErrorKind::AuthenticationFailure => write!(f, "authentication failure"),
-            ServerErrorKind::InvalidArgument { argument, reason } => write!(
-                f,
-                "server invalid argument: (argument: {argument}, reason: {reason})"
-            ),
+            ServerErrorKind::InvalidArgument { argument, reason } => {
+                if let Some(argument) = argument {
+                    write!(
+                        f,
+                        "server invalid argument: (argument: {argument}, reason: {reason})"
+                    )
+                } else {
+                    write!(f, "server invalid argument: (reason: {reason})")
+                }
+            }
             ServerErrorKind::Unknown => write!(f, "unknown query error"),
             ServerErrorKind::CompilationFailure => write!(f, "compilation failure"),
             ServerErrorKind::ParsingFailure => write!(f, "parsing failure"),

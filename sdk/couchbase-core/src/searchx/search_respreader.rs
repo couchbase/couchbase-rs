@@ -107,24 +107,30 @@ impl SearchRespReader {
                 }
             };
 
-            let err: search_json::ErrorResponse = match serde_json::from_slice(&body) {
-                Ok(e) => e,
-                Err(e) => {
-                    return Err(error::Error::new_message_error(
-                        format!(
-                        "non-200 status code received {status_code} but parsing error response body failed {e}"
-                    ),
+            let msg = match serde_json::from_slice::<search_json::ErrorResponse>(&body) {
+                Ok(resp) => {
+                    return Err(decode_common_error(
+                        index_name,
+                        status_code,
+                        &resp.error,
                         endpoint,
                     ));
                 }
+                Err(e) => format!(
+                    "non-200 status code received {status_code} but parsing error response body failed {e}"
+                ),
             };
 
-            return Err(decode_common_error(
-                index_name,
-                status_code,
-                &err.error,
-                endpoint,
-            ));
+            if status_code == StatusCode::BAD_REQUEST {
+                return Err(decode_common_error(
+                    index_name,
+                    status_code,
+                    &String::from_utf8_lossy(&body),
+                    endpoint,
+                ));
+            }
+
+            return Err(error::Error::new_message_error(msg, endpoint));
         }
 
         let stream = resp.bytes_stream();

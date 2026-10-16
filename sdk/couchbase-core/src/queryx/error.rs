@@ -619,7 +619,10 @@ pub enum ServerErrorKind {
     WriteInReadOnlyMode,
     ScopeNotFound,
     CollectionNotFound,
-    InvalidArgument { argument: String, reason: String },
+    InvalidArgument {
+        argument: Option<String>,
+        reason: String,
+    },
     BuildAlreadyInProgress,
     Unknown,
 }
@@ -648,10 +651,16 @@ impl Display for ServerErrorKind {
             }
             ServerErrorKind::ScopeNotFound => write!(f, "scope not found"),
             ServerErrorKind::CollectionNotFound => write!(f, "collection not found"),
-            ServerErrorKind::InvalidArgument { argument, reason } => write!(
-                f,
-                "server invalid argument: (argument: {argument}, reason: {reason})"
-            ),
+            ServerErrorKind::InvalidArgument { argument, reason } => {
+                if let Some(argument) = argument {
+                    write!(
+                        f,
+                        "server invalid argument: (argument: {argument}, reason: {reason})"
+                    )
+                } else {
+                    write!(f, "server invalid argument: (reason: {reason})")
+                }
+            }
             ServerErrorKind::BuildAlreadyInProgress => write!(f, "build already in progress"),
             ServerErrorKind::Unknown => write!(f, "unknown query error"),
         }
@@ -782,10 +791,11 @@ impl Error {
     pub fn is_invalid_argument(&self) -> bool {
         matches!(
             self.kind(),
-            ErrorKind::Server(ServerError {
-                kind: ServerErrorKind::InvalidArgument { .. },
-                ..
-            })
+            ErrorKind::InvalidArgument { .. }
+                | ErrorKind::Server(ServerError {
+                    kind: ServerErrorKind::InvalidArgument { .. },
+                    ..
+                })
         )
     }
 
