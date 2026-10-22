@@ -15,9 +15,10 @@
  *  * limitations under the License.
  *
  */
-
 use crate::searchx::query_options::Location;
 use serde::Serialize;
+use serde_json::Value;
+use std::collections::HashMap;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -762,6 +763,90 @@ impl GeoPolygonQuery {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct CustomScoreQuery {
+    pub query: Box<Query>,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fields: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<HashMap<String, Value>>,
+}
+
+impl CustomScoreQuery {
+    pub fn new(query: Query, source: impl Into<String>) -> Self {
+        Self {
+            query: Box::new(query),
+            source: source.into(),
+            fields: None,
+            params: None,
+        }
+    }
+
+    pub fn fields(mut self, fields: impl Into<Option<Vec<String>>>) -> Self {
+        self.fields = fields.into();
+        self
+    }
+
+    pub fn params(mut self, params: impl Into<Option<HashMap<String, Value>>>) -> Self {
+        self.params = params.into();
+        self
+    }
+}
+
+fn serialize_custom_score<S>(query: &CustomScoreQuery, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut map = serializer.serialize_map(Some(1))?;
+    map.serialize_entry("custom_score", query)?;
+    map.end()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct CustomFilterQuery {
+    pub query: Box<Query>,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fields: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<HashMap<String, Value>>,
+}
+
+impl CustomFilterQuery {
+    pub fn new(query: Query, source: impl Into<String>) -> Self {
+        Self {
+            query: Box::new(query),
+            source: source.into(),
+            fields: None,
+            params: None,
+        }
+    }
+
+    pub fn fields(mut self, fields: impl Into<Option<Vec<String>>>) -> Self {
+        self.fields = fields.into();
+        self
+    }
+
+    pub fn params(mut self, params: impl Into<Option<HashMap<String, Value>>>) -> Self {
+        self.params = params.into();
+        self
+    }
+}
+
+fn serialize_custom_filter<S>(query: &CustomFilterQuery, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut map = serializer.serialize_map(Some(1))?;
+    map.serialize_entry("custom_filter", query)?;
+    map.end()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 #[non_exhaustive]
 pub enum Query {
@@ -786,4 +871,87 @@ pub enum Query {
     GeoDistance(GeoDistanceQuery),
     GeoBoundingBox(GeoBoundingBoxQuery),
     GeoPolygon(GeoPolygonQuery),
+    #[serde(serialize_with = "serialize_custom_score")]
+    CustomScore(CustomScoreQuery),
+    #[serde(serialize_with = "serialize_custom_filter")]
+    CustomFilter(CustomFilterQuery),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn match_query() -> Query {
+        Query::Match(MatchQuery::new("hotel").field("type".to_string()))
+    }
+
+    #[test]
+    fn custom_score_query_serializes_all_fields() {
+        let query = Query::CustomScore(
+            CustomScoreQuery::new(
+                match_query(),
+                "function f(doc, params) { return doc.score; }",
+            )
+            .fields(vec!["price".to_string()])
+            .params(HashMap::from([("scale".to_string(), json!(2))])),
+        );
+
+        assert_eq!(
+            serde_json::to_value(&query).unwrap(),
+            json!({
+                "custom_score": {
+                    "query": {"match": "hotel", "field": "type"},
+                    "source": "function f(doc, params) { return doc.score; }",
+                    "fields": ["price"],
+                    "params": {"scale": 2}
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn custom_filter_query_omits_unset_fields_and_params() {
+        let query = Query::CustomFilter(CustomFilterQuery::new(
+            match_query(),
+            "function f(doc, params) { return true; }",
+        ));
+
+        assert_eq!(
+            serde_json::to_value(&query).unwrap(),
+            json!({
+                "custom_filter": {
+                    "query": {"match": "hotel", "field": "type"},
+                    "source": "function f(doc, params) { return true; }"
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn custom_queries_serialize_when_nested() {
+        let query = Query::Conjunction(ConjunctionQuery::new(vec![Query::CustomScore(
+            CustomScoreQuery::new(
+                Query::CustomFilter(CustomFilterQuery::new(match_query(), "filter")),
+                "score",
+            ),
+        )]));
+
+        assert_eq!(
+            serde_json::to_value(&query).unwrap(),
+            json!({
+                "conjuncts": [{
+                    "custom_score": {
+                        "query": {
+                            "custom_filter": {
+                                "query": {"match": "hotel", "field": "type"},
+                                "source": "filter"
+                            }
+                        },
+                        "source": "score"
+                    }
+                }]
+            })
+        );
+    }
 }

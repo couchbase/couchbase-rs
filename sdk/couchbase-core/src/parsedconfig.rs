@@ -64,6 +64,7 @@ pub(crate) struct ParsedConfigNode {
 pub(crate) enum ParsedConfigFeature {
     FtsVectorSearch,
     FtsScoreFusion,
+    FtsCustomScriptQueries,
     Unknown,
 }
 

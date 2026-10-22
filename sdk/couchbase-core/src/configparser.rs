@@ -107,6 +107,9 @@ impl ConfigParser {
             if caps.contains(&"scoreFusion".to_string()) {
                 features.push(ParsedConfigFeature::FtsScoreFusion);
             }
+            if caps.contains(&"udfQuery".to_string()) {
+                features.push(ParsedConfigFeature::FtsCustomScriptQueries);
+            }
         }
 
         let cluster_labels = if config.cluster_name.is_some() || config.cluster_uuid.is_some() {
