@@ -306,6 +306,9 @@ impl AgentComponentConfigs {
                 score_fusion_enabled: config
                     .features
                     .contains(&ParsedConfigFeature::FtsScoreFusion),
+                custom_script_queries_enabled: config
+                    .features
+                    .contains(&ParsedConfigFeature::FtsCustomScriptQueries),
             },
             mgmt_config: MgmtComponentConfig {
                 endpoints: mgmt_endpoints,

@@ -436,4 +436,115 @@ impl QueryOptions {
         self.on_behalf_of = on_behalf_of.into();
         self
     }
+
+    pub(crate) fn has_custom_script_query(&self) -> bool {
+        fn contains_custom_script(query: &Query) -> bool {
+            match query {
+                Query::CustomScore(_) | Query::CustomFilter(_) => true,
+                Query::Conjunction(q) => q.conjuncts.iter().any(contains_custom_script),
+                Query::Disjunction(q) => q.disjuncts.iter().any(contains_custom_script),
+                Query::Boolean(q) => q
+                    .must
+                    .iter()
+                    .flat_map(|c| &c.conjuncts)
+                    .chain(q.should.iter().flat_map(|d| &d.disjuncts))
+                    .chain(q.must_not.iter().flat_map(|d| &d.disjuncts))
+                    .any(contains_custom_script),
+                _ => false,
+            }
+        }
+
+        self.query.as_ref().is_some_and(contains_custom_script)
+            || self.knn.as_ref().is_some_and(|knn| {
+                knn.iter()
+                    .any(|k| k.filter.as_ref().is_some_and(contains_custom_script))
+            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::searchx::queries::{
+        BooleanQuery, ConjunctionQuery, CustomFilterQuery, CustomScoreQuery, DisjunctionQuery,
+        MatchAllQuery, TermQuery,
+    };
+
+    fn term() -> Query {
+        Query::Term(TermQuery::new("hotel"))
+    }
+
+    fn custom_score() -> Query {
+        Query::CustomScore(CustomScoreQuery::new(term(), "score"))
+    }
+
+    fn custom_filter() -> Query {
+        Query::CustomFilter(CustomFilterQuery::new(term(), "filter"))
+    }
+
+    fn with_query(query: Query) -> QueryOptions {
+        QueryOptions::new("idx").query(query)
+    }
+
+    #[test]
+    fn no_query_has_no_custom_script_query() {
+        assert!(!QueryOptions::new("idx").has_custom_script_query());
+    }
+
+    #[test]
+    fn plain_queries_have_no_custom_script_query() {
+        assert!(!with_query(term()).has_custom_script_query());
+        assert!(!with_query(Query::Conjunction(ConjunctionQuery::new(vec![
+            term(),
+            Query::MatchAll(MatchAllQuery::new()),
+        ])))
+        .has_custom_script_query());
+    }
+
+    #[test]
+    fn top_level_custom_script_query_is_detected() {
+        assert!(with_query(custom_score()).has_custom_script_query());
+        assert!(with_query(custom_filter()).has_custom_script_query());
+    }
+
+    #[test]
+    fn custom_script_query_in_compound_query_is_detected() {
+        assert!(with_query(Query::Conjunction(ConjunctionQuery::new(vec![
+            term(),
+            custom_score(),
+        ])))
+        .has_custom_script_query());
+        assert!(with_query(Query::Disjunction(DisjunctionQuery::new(vec![
+            term(),
+            custom_filter(),
+        ])))
+        .has_custom_script_query());
+    }
+
+    #[test]
+    fn custom_script_query_in_each_boolean_clause_is_detected() {
+        let must = BooleanQuery::new().must(ConjunctionQuery::new(vec![custom_score()]));
+        let should = BooleanQuery::new().should(DisjunctionQuery::new(vec![custom_score()]));
+        let must_not = BooleanQuery::new().must_not(DisjunctionQuery::new(vec![custom_score()]));
+
+        for query in [must, should, must_not] {
+            assert!(with_query(Query::Boolean(query)).has_custom_script_query());
+        }
+        assert!(!with_query(Query::Boolean(
+            BooleanQuery::new().must(ConjunctionQuery::new(vec![term()]))
+        ))
+        .has_custom_script_query());
+    }
+
+    #[test]
+    fn custom_script_query_in_knn_filter_is_detected() {
+        let opts = QueryOptions::new("idx").knn(vec![
+            KnnQuery::new("vec", 3).filter(term()),
+            KnnQuery::new("vec", 3).filter(custom_filter()),
+        ]);
+        assert!(opts.has_custom_script_query());
+
+        let opts = QueryOptions::new("idx").knn(vec![KnnQuery::new("vec", 3).filter(term())]);
+        assert!(!opts.has_custom_script_query());
+    }
 }

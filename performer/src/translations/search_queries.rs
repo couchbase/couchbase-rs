@@ -1,11 +1,13 @@
+use crate::commands::helpers::struct_to_map;
 use crate::errors::error::Error;
 use crate::proto::protocol::sdk::search;
 use crate::proto::protocol::sdk::search::SearchQuery;
 use couchbase::search::queries::{
-    BooleanFieldQuery, BooleanQuery, ConjunctionQuery, DateRangeQuery, DisjunctionQuery,
-    DocIDQuery, GeoBoundingBoxQuery, GeoDistanceQuery, MatchAllQuery, MatchNoneQuery,
-    MatchOperator, MatchPhraseQuery, MatchQuery, NumericRangeQuery, PhraseQuery, PrefixQuery,
-    Query, QueryStringQuery, RegexpQuery, TermQuery, TermRangeQuery, WildcardQuery,
+    BooleanFieldQuery, BooleanQuery, ConjunctionQuery, CustomFilterQuery, CustomScoreQuery,
+    DateRangeQuery, DisjunctionQuery, DocIDQuery, GeoBoundingBoxQuery, GeoDistanceQuery,
+    MatchAllQuery, MatchNoneQuery, MatchOperator, MatchPhraseQuery, MatchQuery, NumericRangeQuery,
+    PhraseQuery, PrefixQuery, Query, QueryStringQuery, RegexpQuery, TermQuery, TermRangeQuery,
+    WildcardQuery,
 };
 use couchbase::search::request::SearchRequest;
 use couchbase::search::vector::{VectorQuery, VectorSearch};
@@ -125,11 +127,13 @@ impl TryFrom<SearchQuery> for Query {
                 let match_none_query = MatchNoneQuery::try_from(query)?;
                 Ok(Query::MatchNone(match_none_query))
             }
-            crate::proto::protocol::sdk::search::search_query::Query::CustomScore(_) => {
-                Err(Error::unimplemented("CustomScore is unimplemented"))
+            crate::proto::protocol::sdk::search::search_query::Query::CustomScore(query) => {
+                let custom_score_query = CustomScoreQuery::try_from(*query)?;
+                Ok(Query::CustomScore(custom_score_query))
             }
-            crate::proto::protocol::sdk::search::search_query::Query::CustomFilter(_) => {
-                Err(Error::unimplemented("CustomFilter is unimplemented"))
+            crate::proto::protocol::sdk::search::search_query::Query::CustomFilter(query) => {
+                let custom_filter_query = CustomFilterQuery::try_from(*query)?;
+                Ok(Query::CustomFilter(custom_filter_query))
             }
         }
     }
@@ -606,6 +610,44 @@ impl TryFrom<crate::proto::protocol::sdk::search::MatchNoneQuery> for MatchNoneQ
 impl From<crate::proto::protocol::sdk::search::Location> for couchbase::search::location::Location {
     fn from(proto: crate::proto::protocol::sdk::search::Location) -> Self {
         couchbase::search::location::Location::new(proto.lat as f64, proto.lon as f64)
+    }
+}
+
+impl TryFrom<crate::proto::protocol::sdk::search::CustomScoreQuery> for CustomScoreQuery {
+    type Error = Box<Error>;
+
+    fn try_from(proto: search::CustomScoreQuery) -> crate::errors::error::Result<Self> {
+        let q = proto
+            .query
+            .ok_or_else(|| Error::invalid_argument("Query is missing from CustomScoreQuery"))?;
+
+        let mut custom_score_query = CustomScoreQuery::new(Query::try_from(*q)?, proto.source);
+        if let Some(params) = proto.parameters {
+            custom_score_query = custom_score_query.params(struct_to_map(params));
+        }
+        if !proto.fields.is_empty() {
+            custom_score_query = custom_score_query.fields(proto.fields);
+        }
+        Ok(custom_score_query)
+    }
+}
+
+impl TryFrom<crate::proto::protocol::sdk::search::CustomFilterQuery> for CustomFilterQuery {
+    type Error = Box<Error>;
+
+    fn try_from(proto: search::CustomFilterQuery) -> crate::errors::error::Result<Self> {
+        let q = proto
+            .query
+            .ok_or_else(|| Error::invalid_argument("Query is missing from CustomFilterQuery"))?;
+
+        let mut custom_filter_query = CustomFilterQuery::new(Query::try_from(*q)?, proto.source);
+        if let Some(params) = proto.parameters {
+            custom_filter_query = custom_filter_query.params(struct_to_map(params));
+        }
+        if !proto.fields.is_empty() {
+            custom_filter_query = custom_filter_query.fields(proto.fields);
+        }
+        Ok(custom_filter_query)
     }
 }
 
