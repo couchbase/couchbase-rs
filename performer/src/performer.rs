@@ -101,6 +101,7 @@ impl PerformerService for Performer {
             sdk::Caps::SdkQuery2120,
             sdk::Caps::SdkGetReplica,
             sdk::Caps::SdkHttp400InvalidArgument,
+            sdk::Caps::SdkSearchCustomScriptQueries,
         ]
         .into_iter()
         .map(|c| c.into())

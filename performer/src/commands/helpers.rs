@@ -1,7 +1,9 @@
 use crate::errors::error::{Error, Result};
 use crate::proto::protocol::{run, sdk};
 use crate::translations::common::sdk_error_to_proto_run_result;
+use prost_types::value::Kind;
 use prost_types::Timestamp;
+use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub fn create_run_result(initiated: Timestamp, elapsed: Duration) -> run::Result {
@@ -48,4 +50,31 @@ pub fn duration_from_millis(millis: impl Into<i64>) -> Result<Duration> {
     }
 
     Ok(Duration::from_millis(millis as u64))
+}
+
+pub fn struct_to_map(s: prost_types::Struct) -> HashMap<String, serde_json::Value> {
+    s.fields
+        .into_iter()
+        .map(|(k, v)| (k, proto_value_to_json(v)))
+        .collect()
+}
+
+pub fn proto_value_to_json(v: prost_types::Value) -> serde_json::Value {
+    match v.kind {
+        None | Some(Kind::NullValue(_)) => serde_json::Value::Null,
+        Some(Kind::BoolValue(b)) => serde_json::Value::Bool(b),
+        Some(Kind::NumberValue(n)) => serde_json::Number::from_f64(n)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        Some(Kind::StringValue(s)) => serde_json::Value::String(s),
+        Some(Kind::ListValue(l)) => {
+            serde_json::Value::Array(l.values.into_iter().map(proto_value_to_json).collect())
+        }
+        Some(Kind::StructValue(s)) => serde_json::Value::Object(
+            s.fields
+                .into_iter()
+                .map(|(k, v)| (k, proto_value_to_json(v)))
+                .collect(),
+        ),
+    }
 }

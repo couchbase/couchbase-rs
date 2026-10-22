@@ -82,6 +82,7 @@ impl<'a> EnsureIndexHelper<'a> {
             auth: target.auth.clone(),
             vector_search_enabled: true,
             score_fusion_enabled: true,
+            custom_script_queries_enabled: true,
             tracing: Default::default(),
         }
         .get_index(&GetIndexOptions {
@@ -128,6 +129,7 @@ impl<'a> EnsureIndexHelper<'a> {
             auth: target.auth.clone(),
             vector_search_enabled: true,
             score_fusion_enabled: true,
+            custom_script_queries_enabled: true,
             tracing: Default::default(),
         }
         .refresh_config(&RefreshConfigOptions::new())
