@@ -31,6 +31,7 @@ use crate::searchx::mgmt_options::{
     PauseIngestOptions, PingOptions, RefreshConfigOptions, ResumeIngestOptions,
     UnfreezePlanOptions, UpsertIndexOptions,
 };
+use crate::searchx::queries::Query;
 use crate::searchx::query_options::QueryOptions;
 use crate::searchx::search_json::{DocumentAnalysisJson, IndexedDocumentsJson};
 use crate::searchx::search_respreader::SearchRespReader;
@@ -55,6 +56,7 @@ pub struct Search<C: Client> {
 
     pub vector_search_enabled: bool,
     pub score_fusion_enabled: bool,
+    pub custom_script_queries_enabled: bool,
     pub(crate) tracing: Arc<TracingComponent>,
 }
 
@@ -121,6 +123,12 @@ impl<C: Client> Search<C> {
                     ));
                 }
             }
+        }
+
+        if !self.custom_script_queries_enabled && opts.has_custom_script_query() {
+            return Err(Error::new_unsupported_feature_error(
+                "custom score or filter queries".to_string(),
+            ));
         }
 
         let req_uri = if let Some(bucket) = &opts.bucket_name {

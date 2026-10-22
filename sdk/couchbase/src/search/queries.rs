@@ -36,8 +36,12 @@
 //! | [`QueryStringQuery`] | Parses a human-readable query string |
 //! | [`MatchAllQuery`] | Matches all documents |
 //! | [`MatchNoneQuery`] | Matches no documents |
+//! | [`CustomScoreQuery`] | Re-scores results using a user-defined JavaScript function |
+//! | [`CustomFilterQuery`] | Filters results using a user-defined JavaScript function |
 
 use crate::search::location::Location;
+use serde_json::Value;
+use std::collections::HashMap;
 use std::fmt::Display;
 
 /// The boolean operator for combining match query terms.
@@ -926,6 +930,86 @@ impl GeoPolygonQuery {
     }
 }
 
+/// A query that scores the results of an inner query using a user-defined JavaScript function.
+///
+/// Requires a cluster that supports custom script queries.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct CustomScoreQuery {
+    /// The inner query whose results are passed to the function.
+    pub query: Box<Query>,
+    /// The JavaScript scoring function.
+    pub source: String,
+    /// The document fields made available to the function.
+    pub fields: Option<Vec<String>>,
+    /// The parameters passed to the function.
+    pub params: Option<HashMap<String, Value>>,
+}
+
+impl CustomScoreQuery {
+    /// Creates a new `CustomScoreQuery` with the given inner query and JavaScript function.
+    pub fn new(query: Query, source: impl Into<String>) -> Self {
+        Self {
+            query: Box::new(query),
+            source: source.into(),
+            fields: None,
+            params: None,
+        }
+    }
+
+    /// Sets the document fields made available to the function. Use `"*"` for all fields.
+    pub fn fields(mut self, fields: Vec<String>) -> Self {
+        self.fields = Some(fields);
+        self
+    }
+
+    /// Sets the parameters passed to the function.
+    pub fn params(mut self, params: impl Into<HashMap<String, Value>>) -> Self {
+        self.params = Some(params.into());
+        self
+    }
+}
+
+/// A query that filters the results of an inner query using a user-defined JavaScript function.
+///
+/// Requires a cluster that supports custom script queries.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct CustomFilterQuery {
+    /// The inner query whose results are passed to the function.
+    pub query: Box<Query>,
+    /// The JavaScript filtering function.
+    pub source: String,
+    /// The document fields made available to the function.
+    pub fields: Option<Vec<String>>,
+    /// The parameters passed to the function.
+    pub params: Option<HashMap<String, Value>>,
+}
+
+impl CustomFilterQuery {
+    /// Creates a new `CustomFilterQuery` with the given inner query and JavaScript function.
+    pub fn new(query: Query, source: impl Into<String>) -> Self {
+        Self {
+            query: Box::new(query),
+            source: source.into(),
+            fields: None,
+            params: None,
+        }
+    }
+
+    /// Sets the document fields made available to the function. Use `"*"` for all fields.
+    pub fn fields(mut self, fields: Vec<String>) -> Self {
+        self.fields = Some(fields);
+        self
+    }
+
+    /// Sets the parameters passed to the function.
+    pub fn params(mut self, params: impl Into<HashMap<String, Value>>) -> Self {
+        self.params = Some(params.into());
+        self
+    }
+}
+
 /// The query builder enum for constructing search queries.
 ///
 /// Each variant wraps a specific query type. Use this enum when passing a query to
@@ -997,6 +1081,10 @@ pub enum Query {
     GeoBoundingBox(GeoBoundingBoxQuery),
     /// A geo polygon query. See [`GeoPolygonQuery`].
     GeoPolygon(GeoPolygonQuery),
+    /// A custom score query. See [`CustomScoreQuery`].
+    CustomScore(CustomScoreQuery),
+    /// A custom filter query. See [`CustomFilterQuery`].
+    CustomFilter(CustomFilterQuery),
 }
 
 impl From<MatchOperator> for couchbase_core::searchx::queries::MatchOperator {
@@ -1222,6 +1310,25 @@ impl From<GeoPolygonQuery> for couchbase_core::searchx::queries::GeoPolygonQuery
     }
 }
 
+impl From<CustomScoreQuery> for couchbase_core::searchx::queries::CustomScoreQuery {
+    fn from(query: CustomScoreQuery) -> Self {
+        couchbase_core::searchx::queries::CustomScoreQuery::new((*query.query).into(), query.source)
+            .fields(query.fields)
+            .params(query.params)
+    }
+}
+
+impl From<CustomFilterQuery> for couchbase_core::searchx::queries::CustomFilterQuery {
+    fn from(query: CustomFilterQuery) -> Self {
+        couchbase_core::searchx::queries::CustomFilterQuery::new(
+            (*query.query).into(),
+            query.source,
+        )
+        .fields(query.fields)
+        .params(query.params)
+    }
+}
+
 impl From<Query> for couchbase_core::searchx::queries::Query {
     fn from(query: Query) -> Self {
         match query {
@@ -1252,6 +1359,10 @@ impl From<Query> for couchbase_core::searchx::queries::Query {
                 couchbase_core::searchx::queries::Query::GeoBoundingBox(q.into())
             }
             Query::GeoPolygon(q) => couchbase_core::searchx::queries::Query::GeoPolygon(q.into()),
+            Query::CustomScore(q) => couchbase_core::searchx::queries::Query::CustomScore(q.into()),
+            Query::CustomFilter(q) => {
+                couchbase_core::searchx::queries::Query::CustomFilter(q.into())
+            }
         }
     }
 }
