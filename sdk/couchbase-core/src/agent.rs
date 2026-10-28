@@ -19,6 +19,7 @@
 use crate::address::Address;
 use crate::auth_mechanism::AuthMechanism;
 use crate::authenticator::Authenticator;
+use crate::cbconfig;
 use crate::cbconfig::TerseConfig;
 use crate::collection_resolver_cached::{
     CollectionResolverCached, CollectionResolverCachedOptions,
@@ -356,7 +357,15 @@ impl AgentInner {
 }
 
 impl ConfigUpdater for AgentInner {
-    async fn apply_terse_config(&self, config: TerseConfig, source_hostname: &str) {
+    async fn apply_terse_config(&self, config: &[u8], source_hostname: &str) {
+        let config = match cbconfig::parse::parse_terse_config(config, source_hostname) {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                debug!("Failed to parse NMVB config: {}", user_data(&e));
+                return;
+            }
+        };
+
         let parsed_config = match ConfigParser::parse_terse_config(config, source_hostname) {
             Ok(cfg) => cfg,
             Err(_e) => {
