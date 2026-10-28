@@ -309,6 +309,7 @@ pub struct MemdxError {
 pub struct InnerMemdxError {
     source: memdx::error::Error,
     dispatched_to: Option<String>,
+    dispatched_to_hostname: Option<String>,
     dispatched_from: Option<String>,
     doc_id: Option<Vec<u8>>,
     bucket_name: Option<String>,
@@ -331,6 +332,7 @@ impl MemdxError {
             inner: Box::new(InnerMemdxError {
                 source,
                 dispatched_to: None,
+                dispatched_to_hostname: None,
                 dispatched_from: None,
                 doc_id: None,
                 bucket_name: None,
@@ -346,6 +348,16 @@ impl MemdxError {
         self
     }
 
+    // The hostname of the client that dispatched the request, as opposed to the resolved address.
+    // Used for $HOST substitution in configs returned alongside errors (e.g. NotMyVbucket).
+    pub(crate) fn with_dispatched_to_hostname(
+        mut self,
+        dispatched_to_hostname: impl Into<String>,
+    ) -> Self {
+        self.inner.dispatched_to_hostname = Some(dispatched_to_hostname.into());
+        self
+    }
+
     pub(crate) fn with_dispatched_from(mut self, dispatched_from: impl Into<String>) -> Self {
         self.inner.dispatched_from = Some(dispatched_from.into());
         self
@@ -353,6 +365,10 @@ impl MemdxError {
 
     pub fn dispatched_to(&self) -> Option<&String> {
         self.inner.dispatched_to.as_ref()
+    }
+
+    pub(crate) fn dispatched_to_hostname(&self) -> Option<&String> {
+        self.inner.dispatched_to_hostname.as_ref()
     }
 
     pub fn dispatched_from(&self) -> Option<&String> {

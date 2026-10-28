@@ -16,7 +16,6 @@
  *
  */
 
-use crate::cbconfig::TerseConfig;
 use crate::error::ErrorKind;
 use crate::error::Result;
 use crate::memdx::error::ServerErrorKind;
@@ -133,10 +132,10 @@ where
         Err(e) => e,
     };
 
-    let config = if let Some(memdx_err) = err.is_memdx_error() {
+    let (config, source_hostname) = if let ErrorKind::Memdx(memdx_err) = err.kind() {
         if memdx_err.is_server_error_kind(ServerErrorKind::NotMyVbucket) {
             if let Some(config) = memdx_err.has_server_config() {
-                config
+                (config, memdx_err.dispatched_to_hostname())
             } else {
                 // This will automatically get retried by the retry manager.
                 debug!("Received empty NMVB response");
@@ -154,23 +153,16 @@ where
         return Err(err);
     }
 
-    let value = match std::str::from_utf8(config.as_slice()) {
-        Ok(v) => v.to_string(),
-        Err(_e) => "".to_string(),
-    };
-
-    let config = value.replace("$HOST", endpoint.as_ref());
-
-    let config_json: TerseConfig = match serde_json::from_str(&config) {
-        Ok(c) => c,
-        Err(_) => {
-            return Err(err);
-        }
+    // The hostname must come from the client that received the response, rather than being
+    // looked up by endpoint, as the endpoint's target may have changed since dispatch.
+    let Some(source_hostname) = source_hostname else {
+        debug!("Received NMVB response without a source hostname");
+        return Err(err);
     };
 
     nmvb_handler
         .clone()
-        .not_my_vbucket_config(config_json, &endpoint)
+        .not_my_vbucket_config(config, source_hostname)
         .await;
 
     Err(err)
@@ -180,18 +172,103 @@ where
 mod tests {
     use std::sync::Arc;
 
-    use crate::cbconfig::TerseConfig;
+    use std::sync::Mutex;
+
+    use crate::error::{Error, MemdxError, Result};
+    use crate::memdx;
+    use crate::memdx::error::{ServerError, ServerErrorKind};
+    use crate::memdx::opcode::OpCode;
+    use crate::memdx::status::Status;
     use crate::replica_helpers::next_replica_index_to_try;
     use crate::vbucketmap::VbucketMap;
     use crate::vbucketrouter::{
-        NotMyVbucketConfigHandler, StdVbucketRouter, VbucketRouter, VbucketRouterOptions,
-        VbucketRoutingInfo,
+        orchestrate_memd_routing, NotMyVbucketConfigHandler, StdVbucketRouter, VbucketRouter,
+        VbucketRouterOptions, VbucketRoutingInfo,
     };
 
     struct NVMBHandler {}
 
     impl NotMyVbucketConfigHandler for NVMBHandler {
-        async fn not_my_vbucket_config(&self, config: TerseConfig, source_hostname: &str) {}
+        async fn not_my_vbucket_config(&self, config: &[u8], source_hostname: &str) {}
+    }
+
+    #[derive(Default)]
+    struct RecordingNVMBHandler {
+        received: Mutex<Vec<(Vec<u8>, String)>>,
+    }
+
+    impl NotMyVbucketConfigHandler for RecordingNVMBHandler {
+        async fn not_my_vbucket_config(&self, config: &[u8], source_hostname: &str) {
+            self.received
+                .lock()
+                .unwrap()
+                .push((config.to_vec(), source_hostname.to_string()));
+        }
+    }
+
+    fn nmvb_error(config: &[u8], dispatched_to_hostname: Option<&str>) -> Error {
+        let server_err = ServerError::new(
+            ServerErrorKind::NotMyVbucket,
+            OpCode::Get,
+            Status::NotMyVbucket,
+            0,
+        )
+        .with_config(config.to_vec());
+
+        let mut err = MemdxError::new(memdx::error::Error::from(server_err));
+        if let Some(hostname) = dispatched_to_hostname {
+            err = err.with_dispatched_to_hostname(hostname);
+        }
+
+        Error::new_contextual_memdx_error(err)
+    }
+
+    fn single_node_router() -> StdVbucketRouter {
+        StdVbucketRouter::new(
+            VbucketRoutingInfo {
+                vbucket_info: Some(VbucketMap::new(vec![vec![0]], 0).unwrap()),
+                server_list: vec![Arc::from("kvep-node-8091")],
+                bucket_selected: true,
+            },
+            VbucketRouterOptions {},
+        )
+    }
+
+    #[tokio::test]
+    async fn nmvb_config_uses_dispatching_client_hostname() {
+        let handler = Arc::new(RecordingNVMBHandler::default());
+
+        let res: Result<()> = orchestrate_memd_routing(
+            Arc::new(single_node_router()),
+            handler.clone(),
+            b"key",
+            0,
+            |_, _| async { Err(nmvb_error(b"{}", Some("10.0.0.1"))) },
+        )
+        .await;
+
+        assert!(res.is_err());
+        assert_eq!(
+            vec![(b"{}".to_vec(), "10.0.0.1".to_string())],
+            *handler.received.lock().unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn nmvb_config_without_hostname_is_not_applied() {
+        let handler = Arc::new(RecordingNVMBHandler::default());
+
+        let res: Result<()> = orchestrate_memd_routing(
+            Arc::new(single_node_router()),
+            handler.clone(),
+            b"key",
+            0,
+            |_, _| async { Err(nmvb_error(b"{}", None)) },
+        )
+        .await;
+
+        assert!(res.is_err());
+        assert!(handler.received.lock().unwrap().is_empty());
     }
 
     #[test]
