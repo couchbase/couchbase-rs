@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use arc_swap::ArcSwap;
+use tokio::sync::futures::OwnedNotified;
 use tokio::sync::Notify;
 
 use crate::collectionresolver::CollectionResolver;
@@ -46,6 +47,11 @@ struct CollectionCacheEntry {
 }
 
 type CollectionResolverSlowMap = Arc<Mutex<HashMap<String, Arc<Mutex<CollectionCacheEntry>>>>>;
+
+enum SlowMapLookup {
+    Pending(OwnedNotified),
+    Inserted(Arc<Mutex<CollectionCacheEntry>>),
+}
 
 pub(crate) struct CollectionResolverCached<Resolver: CollectionResolver> {
     resolver: Arc<Resolver>,
@@ -79,16 +85,15 @@ where
         full_key_path: &str,
     ) -> Result<(u32, u64)> {
         loop {
-            // This pending logic is a little convoluted but without it the compiler
-            // thinks that we are holding the slow_map lock across an await, even
-            // if we drop it manually.
-            let pending = {
+            // Scoped so the compiler sees the slow_map lock released before we await.
+            let lookup = {
                 let mut slow_map = self.slow_map.lock().unwrap();
 
                 if let Some(entry) = slow_map.get(full_key_path) {
                     let entry_guard = entry.lock().unwrap();
                     if let Some(pending) = &entry_guard.pending {
-                        Some(pending.clone())
+                        // Created under the lock, notify_waiters only wakes existing futures.
+                        SlowMapLookup::Pending(pending.clone().notified_owned())
                     } else {
                         return Ok((entry_guard.collection_id, entry_guard.manifest_rev));
                     }
@@ -99,17 +104,22 @@ where
                         pending: Some(Arc::new(Notify::new())),
                     }));
 
-                    slow_map.insert(full_key_path.to_string(), entry);
+                    slow_map.insert(full_key_path.to_string(), entry.clone());
 
-                    None
+                    SlowMapLookup::Inserted(entry)
                 }
             };
 
-            if let Some(p) = pending {
-                p.notified().await;
+            // Keep our own entry rather than looking it up again later, it may have been
+            // invalidated (and replaced) whilst the resolve was in flight.
+            let entry = match lookup {
+                SlowMapLookup::Pending(notified) => {
+                    notified.await;
 
-                continue;
-            }
+                    continue;
+                }
+                SlowMapLookup::Inserted(entry) => entry,
+            };
 
             let resolve_resp = {
                 let scope_name = scope_name.to_string();
@@ -130,9 +140,6 @@ where
             return match resolve_resp {
                 Ok((collection_id, manifest_rev)) => {
                     let slow_map = self.slow_map.lock().unwrap();
-                    let entry = slow_map
-                        .get(full_key_path)
-                        .expect("slow map was missing collection id entry");
 
                     let pending = {
                         let mut guard = entry.lock().unwrap();
@@ -142,7 +149,9 @@ where
                         guard.pending.take()
                     };
 
-                    Self::rebuild_fast_cache_locked(&slow_map, self.fast_cache.clone());
+                    if Self::is_current_entry_locked(&slow_map, full_key_path, &entry) {
+                        Self::rebuild_fast_cache_locked(&slow_map, self.fast_cache.clone());
+                    }
 
                     if let Some(p) = pending {
                         p.notify_waiters();
@@ -152,9 +161,9 @@ where
                 }
                 Err(e) => {
                     let mut slow_map = self.slow_map.lock().unwrap();
-                    let entry = slow_map
-                        .remove(full_key_path)
-                        .expect("slow map was missing collection id entry");
+                    if Self::is_current_entry_locked(&slow_map, full_key_path, &entry) {
+                        slow_map.remove(full_key_path);
+                    }
 
                     let mut guard = entry.lock().unwrap();
                     let pending = guard.pending.take();
@@ -169,6 +178,16 @@ where
                 }
             };
         }
+    }
+
+    fn is_current_entry_locked(
+        guard: &HashMap<String, Arc<Mutex<CollectionCacheEntry>>>,
+        full_key_path: &str,
+        entry: &Arc<Mutex<CollectionCacheEntry>>,
+    ) -> bool {
+        guard
+            .get(full_key_path)
+            .is_some_and(|current| Arc::ptr_eq(current, entry))
     }
 
     fn rebuild_fast_cache_locked(
@@ -230,5 +249,148 @@ where
         slow_map.remove(&full_key_path);
 
         Self::rebuild_fast_cache_locked(&slow_map, self.fast_cache.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use tokio::sync::Notify;
+
+    use crate::collection_resolver_cached::{
+        CollectionResolverCached, CollectionResolverCachedOptions,
+    };
+    use crate::collectionresolver::CollectionResolver;
+    use crate::error::{Error, Result};
+
+    #[derive(Default)]
+    struct GatedResolver {
+        started: Notify,
+        release: Notify,
+        calls: AtomicUsize,
+        fail: AtomicBool,
+    }
+
+    impl CollectionResolver for Arc<GatedResolver> {
+        async fn resolve_collection_id(
+            &self,
+            _scope_name: &str,
+            _collection_name: &str,
+        ) -> Result<(u32, u64)> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.started.notify_one();
+            self.release.notified().await;
+
+            if self.fail.load(Ordering::SeqCst) {
+                Err(Error::new_message_error("resolve failed"))
+            } else {
+                Ok((8, 1))
+            }
+        }
+
+        async fn invalidate_collection_id(&self, _scope_name: &str, _collection_name: &str) {}
+    }
+
+    async fn resolve_with_invalidate_in_flight(
+        fail: bool,
+    ) -> (
+        Arc<GatedResolver>,
+        Arc<CollectionResolverCached<Arc<GatedResolver>>>,
+    ) {
+        let inner = Arc::new(GatedResolver::default());
+        inner.fail.store(fail, Ordering::SeqCst);
+
+        let resolver = Arc::new(CollectionResolverCached::new(
+            CollectionResolverCachedOptions {
+                resolver: inner.clone(),
+            },
+        ));
+
+        let resolve_handle = {
+            let resolver = resolver.clone();
+            tokio::spawn(async move { resolver.resolve_collection_id("scope", "coll").await })
+        };
+
+        inner.started.notified().await;
+        resolver.invalidate_collection_id("scope", "coll").await;
+        inner.release.notify_one();
+
+        let res = resolve_handle.await.expect("resolve task panicked");
+        if fail {
+            assert!(res.is_err());
+        } else {
+            assert_eq!((8, 1), res.unwrap());
+        }
+
+        (inner, resolver)
+    }
+
+    #[tokio::test]
+    async fn invalidate_during_successful_resolve() {
+        let (inner, resolver) = resolve_with_invalidate_in_flight(false).await;
+
+        // The invalidated result must not have been cached, so this resolves again.
+        inner.release.notify_one();
+        let res = resolver.resolve_collection_id("scope", "coll").await;
+        assert_eq!((8, 1), res.unwrap());
+        assert_eq!(2, inner.calls.load(Ordering::SeqCst));
+
+        // That result was not invalidated, so it is now cached.
+        let res = resolver.resolve_collection_id("scope", "coll").await;
+        assert_eq!((8, 1), res.unwrap());
+        assert_eq!(2, inner.calls.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn invalidate_during_failed_resolve() {
+        let (inner, resolver) = resolve_with_invalidate_in_flight(true).await;
+
+        inner.fail.store(false, Ordering::SeqCst);
+        inner.release.notify_one();
+        let res = resolver.resolve_collection_id("scope", "coll").await;
+        assert_eq!((8, 1), res.unwrap());
+        assert_eq!(2, inner.calls.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn failed_resolve_does_not_remove_replacement_entry() {
+        let inner = Arc::new(GatedResolver::default());
+        let resolver = Arc::new(CollectionResolverCached::new(
+            CollectionResolverCachedOptions {
+                resolver: inner.clone(),
+            },
+        ));
+
+        let spawn_resolve = || {
+            let resolver = resolver.clone();
+            tokio::spawn(async move { resolver.resolve_collection_id("scope", "coll").await })
+        };
+
+        // Invalidate the first resolve, then start a second which inserts a replacement entry.
+        let first_handle = spawn_resolve();
+        inner.started.notified().await;
+        resolver.invalidate_collection_id("scope", "coll").await;
+
+        let second_handle = spawn_resolve();
+        inner.started.notified().await;
+
+        // Notify wakes waiters in FIFO order, so this releases the first resolve.
+        inner.fail.store(true, Ordering::SeqCst);
+        inner.release.notify_one();
+        let res = first_handle.await.expect("first resolve task panicked");
+        assert!(res.is_err());
+
+        inner.fail.store(false, Ordering::SeqCst);
+        inner.release.notify_one();
+        let res = second_handle.await.expect("second resolve task panicked");
+        assert_eq!((8, 1), res.unwrap());
+
+        // Should be cached, release anyway so a re-resolve fails the test rather than hangs.
+        inner.release.notify_one();
+        let res = resolver.resolve_collection_id("scope", "coll").await;
+        assert_eq!((8, 1), res.unwrap());
+        assert_eq!(2, inner.calls.load(Ordering::SeqCst));
     }
 }
