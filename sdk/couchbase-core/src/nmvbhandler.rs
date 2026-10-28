@@ -22,12 +22,12 @@ use std::sync::Weak;
 
 use tokio::sync::Mutex;
 
-use crate::cbconfig::TerseConfig;
-
 pub(crate) trait NotMyVbucketConfigHandler: Send + Sync {
+    // The config is passed unparsed, as $HOST must be substituted for the hostname of
+    // the client that the config came from.
     fn not_my_vbucket_config(
         &self,
-        config: TerseConfig,
+        config: &[u8],
         source_hostname: &str,
     ) -> impl Future<Output = ()> + Send;
 }
@@ -35,7 +35,7 @@ pub(crate) trait NotMyVbucketConfigHandler: Send + Sync {
 pub(crate) trait ConfigUpdater: Send + Sync + Sized {
     fn apply_terse_config(
         &self,
-        config: TerseConfig,
+        config: &[u8],
         source_hostname: &str,
     ) -> impl Future<Output = ()> + Send;
 }
@@ -64,7 +64,7 @@ impl<C> NotMyVbucketConfigHandler for StdNotMyVbucketConfigHandler<C>
 where
     C: ConfigUpdater,
 {
-    async fn not_my_vbucket_config(&self, config: TerseConfig, source_hostname: &str) {
+    async fn not_my_vbucket_config(&self, config: &[u8], source_hostname: &str) {
         if let Some(watcher) = self.watcher.lock().await.deref() {
             if let Some(watcher) = watcher.upgrade() {
                 watcher.apply_terse_config(config, source_hostname).await;
