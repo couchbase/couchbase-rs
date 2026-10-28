@@ -20,10 +20,9 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::Receiver;
 use tokio::time::{timeout_at, Instant};
 
-use crate::memdx::client::{OpaqueMap, SenderContext};
+use crate::memdx::client::{OpaqueMap, ResponseReceiver, SenderContext};
 use crate::memdx::client_response::ClientResponse;
 use crate::memdx::error::CancellationErrorKind;
 use crate::memdx::error::{Error, Result};
@@ -31,7 +30,7 @@ use crate::memdx::response::TryFromClientResponse;
 
 pub struct ClientPendingOp {
     opaque: u32,
-    response_receiver: Receiver<Result<ClientResponse>>,
+    response_receiver: ResponseReceiver,
     opaque_map: Arc<Mutex<OpaqueMap>>,
 
     is_persistent: bool,
@@ -42,7 +41,7 @@ impl ClientPendingOp {
     pub(crate) fn new(
         opaque: u32,
         opaque_map: Arc<Mutex<OpaqueMap>>,
-        response_receiver: Receiver<Result<ClientResponse>>,
+        response_receiver: ResponseReceiver,
         is_persistent: bool,
     ) -> Self {
         ClientPendingOp {
@@ -55,7 +54,19 @@ impl ClientPendingOp {
     }
 
     pub async fn recv(&mut self) -> Result<ClientResponse> {
-        match self.response_receiver.recv().await {
+        let resp = match &mut self.response_receiver {
+            ResponseReceiver::Oneshot(receiver) => match receiver {
+                Some(rx) => {
+                    let resp = rx.await.ok();
+                    *receiver = None;
+                    resp
+                }
+                None => None,
+            },
+            ResponseReceiver::Stream(rx) => rx.recv().await,
+        };
+
+        match resp {
             Some(r) => {
                 if !self.is_persistent {
                     self.completed.store(true, Ordering::SeqCst);
@@ -73,12 +84,10 @@ impl ClientPendingOp {
         let context = self.cancel_op();
 
         if let Some(context) = context {
-            let sender = &context.sender;
-
-            sender
+            let _ = context
+                .sender
                 .send(Err(Error::new_cancelled_error(e)))
-                .await
-                .unwrap();
+                .await;
 
             true
         } else {
@@ -157,5 +166,46 @@ where
 
             op.recv().await
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    use tokio::time::timeout;
+
+    use crate::memdx::client::{response_channel, SenderContext};
+    use crate::memdx::error::{CancellationErrorKind, ErrorKind};
+    use crate::memdx::pendingop::ClientPendingOp;
+
+    #[tokio::test]
+    async fn cancel_after_timed_out_recv() {
+        let (sender, receiver) = response_channel(false);
+
+        let opaque_map = Arc::new(Mutex::new(HashMap::new()));
+        opaque_map.lock().unwrap().insert(
+            1,
+            SenderContext {
+                sender,
+                context: None,
+            },
+        );
+
+        let mut op = ClientPendingOp::new(1, opaque_map.clone(), receiver, false);
+
+        // Dropping a recv future part way through must not lose the receiver.
+        assert!(timeout(Duration::from_millis(10), op.recv()).await.is_err());
+
+        assert!(op.cancel(CancellationErrorKind::Timeout).await);
+        assert!(opaque_map.lock().unwrap().is_empty());
+
+        let err = op.recv().await.unwrap_err();
+        assert!(matches!(
+            err.kind(),
+            ErrorKind::Cancelled(CancellationErrorKind::Timeout)
+        ));
     }
 }
