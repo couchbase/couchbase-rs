@@ -61,8 +61,45 @@ use crate::memdx::pendingop::ClientPendingOp;
 use crate::memdx::subdoc::SubdocRequestInfo;
 use crate::orphan_reporter::OrphanContext;
 
-pub(crate) type ResponseSender = Sender<error::Result<ClientResponse>>;
 pub(crate) type OpaqueMap = HashMap<u32, SenderContext>;
+
+#[derive(Debug)]
+pub(crate) enum ResponseSender {
+    // Used by ops which only ever receive a single response.
+    Oneshot(oneshot::Sender<error::Result<ClientResponse>>),
+    // Used by persistent ops, which can receive many responses.
+    Stream(Sender<error::Result<ClientResponse>>),
+}
+
+impl ResponseSender {
+    /// Sends the response, failing if the receiver has been dropped.
+    pub async fn send(self, resp: error::Result<ClientResponse>) -> std::result::Result<(), ()> {
+        match self {
+            ResponseSender::Oneshot(sender) => sender.send(resp).map_err(|_| ()),
+            ResponseSender::Stream(sender) => sender.send(resp).await.map_err(|_| ()),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum ResponseReceiver {
+    // A oneshot receiver is consumed once it resolves, at which point this becomes None.
+    Oneshot(Option<oneshot::Receiver<error::Result<ClientResponse>>>),
+    Stream(Receiver<error::Result<ClientResponse>>),
+}
+
+pub(crate) fn response_channel(is_persistent: bool) -> (ResponseSender, ResponseReceiver) {
+    if is_persistent {
+        let (tx, rx) = mpsc::channel(1);
+        (ResponseSender::Stream(tx), ResponseReceiver::Stream(rx))
+    } else {
+        let (tx, rx) = oneshot::channel();
+        (
+            ResponseSender::Oneshot(tx),
+            ResponseReceiver::Oneshot(Some(rx)),
+        )
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ResponseContext {
@@ -72,10 +109,9 @@ pub struct ResponseContext {
     pub collection_name: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct SenderContext {
     pub sender: ResponseSender,
-    pub is_persistent: bool,
     pub context: Option<ResponseContext>,
 }
 
@@ -213,9 +249,7 @@ impl Client {
                                         map.remove(&opaque)
                                     };
 
-                                    if let Some(mut context) = context {
-                                        let sender = &context.sender;
-
+                                    if let Some(context) = context {
                                         if let Some(value) = &packet.value {
                                             if !opts.disable_decompression && (packet.datatype & u8::from(DataTypeFlag::Compressed) != 0) {
                                                 let mut decoder = Decoder::new();
@@ -224,12 +258,8 @@ impl Client {
                                                      {
                                                         Ok(v) => v,
                                                         Err(e) => {
-                                                            match sender.send(Err(Error::new_decompression_error().with(e))).await{
-                                                                Ok(_) => {}
-                                                                Err(e) => {
-                                                                     // A channel error renders as a fixed message, never its payload.
-                                                                     debug!("Sending response to caller failed: {}", not_sensitive(&e));
-                                                                }
+                                                            if context.sender.send(Err(Error::new_decompression_error().with(e))).await.is_err() {
+                                                                debug!("Sending response to caller failed: receiver dropped");
                                                             };
                                                          continue;
                                                         }
@@ -240,19 +270,20 @@ impl Client {
                                             }
                                         }
 
-                                        if context.is_persistent {
-                                            {
-                                                let mut map = requests.lock().unwrap();
-                                                map.insert(opaque, context.clone());
-                                            }
+                                        // Persistent ops can receive further responses, so must stay registered.
+                                        if let ResponseSender::Stream(sender) = &context.sender {
+                                            let mut map = requests.lock().unwrap();
+                                            map.insert(opaque, SenderContext {
+                                                sender: ResponseSender::Stream(sender.clone()),
+                                                context: context.context.clone(),
+                                            });
                                         }
 
                                         let resp = ClientResponse::new(packet, context.context);
-                                        match sender.send(Ok(resp)).await {
+                                        match context.sender.send(Ok(resp)).await {
                                             Ok(_) => {}
-                                            Err(e) => {
-                                                // A channel error renders as a fixed message, never its payload.
-                                                debug!("Sending response to caller failed: {}", not_sensitive(&e));
+                                            Err(_) => {
+                                                debug!("Sending response to caller failed: receiver dropped");
                                                 let graceful = opts.closed.load(Ordering::SeqCst) || opts.on_close_cancel.is_cancelled();
                                                 Self::on_read_loop_close(&opts.client_id, stream, opaque_map, opts.on_read_close_handler, graceful).await;
                                                 return;
@@ -392,11 +423,10 @@ impl Dispatcher for Client {
         is_persistent: bool,
         response_context: Option<ResponseContext>,
     ) -> error::Result<ClientPendingOp> {
-        let (response_tx, response_rx) = mpsc::channel(1);
+        let (response_tx, response_rx) = response_channel(is_persistent);
 
         let opaque = self.register_handler(SenderContext {
             sender: response_tx,
-            is_persistent,
             context: response_context,
         });
         packet.opaque = Some(opaque);
