@@ -809,9 +809,18 @@ impl Agent {
 
                 client.close().await?;
 
-                let config: TerseConfig = serde_json::from_slice(&raw_config).map_err(|e| {
-                    Error::new_message_error(format!("failed to deserialize config: {e}"))
-                })?;
+                let config =
+                    match cbconfig::parse::parse_terse_config(&raw_config, host.host.as_str()) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            debug!(
+                                "Failed to parse config from {}: {}",
+                                system_data(&host.host),
+                                user_data(&e)
+                            );
+                            continue;
+                        }
+                    };
 
                 match ConfigParser::parse_terse_config(config, host.host.as_str()) {
                     Ok(c) => {
