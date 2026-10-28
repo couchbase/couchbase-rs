@@ -100,7 +100,7 @@ impl VbucketRouter for StdVbucketRouter {
         let vbucket_info = Self::get_vbucket_info(&info)?;
         let idx = vbucket_info.node_by_vbucket(vb_id, 0)?;
 
-        if idx > 0 {
+        if idx >= 0 {
             if let Some(server) = info.server_list.get(idx as usize) {
                 return Ok(server.clone());
             }
@@ -243,5 +243,22 @@ mod tests {
 
         assert_eq!("endpoint2", &*endpoint);
         assert_eq!(3, vb_id);
+    }
+
+    #[test]
+    fn dispatch_to_vbucket() {
+        let routing_info = VbucketRoutingInfo {
+            vbucket_info: Option::from(VbucketMap::new(vec![vec![0, 1], vec![1, 0]], 1).unwrap()),
+            server_list: vec![Arc::from("endpoint1"), Arc::from("endpoint2")],
+            bucket_selected: true,
+        };
+
+        let dispatcher = StdVbucketRouter::new(routing_info, VbucketRouterOptions {});
+
+        let endpoint = dispatcher.dispatch_to_vbucket(0).unwrap();
+        assert_eq!("endpoint1", &*endpoint);
+
+        let endpoint = dispatcher.dispatch_to_vbucket(1).unwrap();
+        assert_eq!("endpoint2", &*endpoint);
     }
 }
