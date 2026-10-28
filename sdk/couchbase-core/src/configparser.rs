@@ -134,7 +134,7 @@ impl ConfigParser {
 
     fn parse_config_hostname(hostname: &Option<String>, source_hostname: &str) -> String {
         if let Some(hostname) = hostname {
-            if hostname.contains(':') {
+            if hostname.contains(':') && !hostname.starts_with('[') {
                 return format!("[{hostname}]");
             }
 
@@ -216,5 +216,30 @@ mod tests {
 
         assert_eq!(vec!["10.0.0.1", "10.0.0.1", "10.0.0.2"], hostnames);
         assert_eq!("10.0.0.1", parsed.source_hostname);
+    }
+
+    #[test]
+    fn parse_terse_config_brackets_ipv6_hostnames_once() {
+        let config = br#"{
+            "rev": 1,
+            "nodesExt": [
+                {"services": {"kv": 11210}, "hostname": "$HOST"},
+                {"services": {"kv": 11210}},
+                {"services": {"kv": 11210}, "hostname": "fd00::2"}
+            ],
+            "clusterCapabilitiesVer": [],
+            "clusterCapabilities": {}
+        }"#;
+
+        let config = cbconfig::parse::parse_terse_config(config, "[fd00::1]").unwrap();
+        let parsed = ConfigParser::parse_terse_config(config, "[fd00::1]").unwrap();
+
+        let hostnames: Vec<&str> = parsed
+            .nodes
+            .iter()
+            .map(|node| node.addresses.hostname.as_str())
+            .collect();
+
+        assert_eq!(vec!["[fd00::1]", "[fd00::1]", "[fd00::2]"], hostnames);
     }
 }
