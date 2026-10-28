@@ -181,3 +181,37 @@ impl ConfigParser {
         Ok(None)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::cbconfig;
+    use crate::configparser::ConfigParser;
+
+    // A config delivered in a NotMyVbucket response can reference the node that sent it either
+    // through $HOST or by omitting the hostname. Both must resolve to the source hostname.
+    #[test]
+    fn parse_terse_config_resolves_source_hostname() {
+        let config = br#"{
+            "rev": 1,
+            "nodesExt": [
+                {"services": {"kv": 11210}, "hostname": "$HOST"},
+                {"services": {"kv": 11210}},
+                {"services": {"kv": 11210}, "hostname": "10.0.0.2"}
+            ],
+            "clusterCapabilitiesVer": [],
+            "clusterCapabilities": {}
+        }"#;
+
+        let config = cbconfig::parse::parse_terse_config(config, "10.0.0.1").unwrap();
+        let parsed = ConfigParser::parse_terse_config(config, "10.0.0.1").unwrap();
+
+        let hostnames: Vec<&str> = parsed
+            .nodes
+            .iter()
+            .map(|node| node.addresses.hostname.as_str())
+            .collect();
+
+        assert_eq!(vec!["10.0.0.1", "10.0.0.1", "10.0.0.2"], hostnames);
+        assert_eq!("10.0.0.1", parsed.source_hostname);
+    }
+}

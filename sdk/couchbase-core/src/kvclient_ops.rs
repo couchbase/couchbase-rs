@@ -491,6 +491,7 @@ where
 
                 Err(MemdxError::new(e)
                     .with_dispatched_to(self.remote_addr().to_string())
+                    .with_dispatched_to_hostname(self.remote_hostname())
                     .with_dispatched_from(self.local_addr().to_string()))
             }
         }
@@ -511,6 +512,7 @@ where
                 }
                 Err(MemdxError::new(e)
                     .with_dispatched_to(self.remote_addr().to_string())
+                    .with_dispatched_to_hostname(self.remote_hostname())
                     .with_dispatched_from(self.local_addr().to_string()))
             }
         }
@@ -522,6 +524,7 @@ where
             .map_err(|e| {
                 MemdxError::new(e)
                     .with_dispatched_to(self.remote_addr().to_string())
+                    .with_dispatched_to_hostname(self.remote_hostname())
                     .with_dispatched_from(self.local_addr().to_string())
             })
     }
