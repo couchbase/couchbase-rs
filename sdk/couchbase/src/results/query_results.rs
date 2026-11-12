@@ -17,6 +17,7 @@
  */
 
 use crate::error;
+use crate::timeouts::OperationDeadline;
 use couchbase_core::queryx;
 use couchbase_core::results::query::QueryResultStream;
 use futures::{Stream, StreamExt, TryStreamExt};
@@ -57,6 +58,7 @@ use std::time::Duration;
 /// ```
 pub struct QueryResult {
     wrapped: QueryResultStream,
+    deadline: Option<OperationDeadline>,
 }
 
 /// A warning returned by the query engine (non-fatal).
@@ -195,12 +197,25 @@ impl<'a> From<&'a queryx::query_result::MetaData> for QueryMetaData<'a> {
 
 impl From<QueryResultStream> for QueryResult {
     fn from(wrapped: QueryResultStream) -> Self {
-        Self { wrapped }
+        Self {
+            wrapped,
+            deadline: None,
+        }
+    }
+}
+
+impl QueryResult {
+    pub(crate) fn with_deadline(wrapped: QueryResultStream, deadline: OperationDeadline) -> Self {
+        Self {
+            wrapped,
+            deadline: Some(deadline),
+        }
     }
 }
 
 struct QueryRows<'a, V: DeserializeOwned> {
     wrapped: &'a mut QueryResultStream,
+    deadline: Option<&'a mut OperationDeadline>,
     phantom_data: PhantomData<&'a V>,
 }
 
@@ -208,10 +223,21 @@ impl<V: DeserializeOwned> Stream for QueryRows<'_, V> {
     type Item = error::Result<V>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if let Some(deadline) = self.deadline.as_mut() {
+            if let Poll::Ready(res) = deadline.poll(cx) {
+                return Poll::Ready(res.err().map(Err));
+            }
+        }
+
         let row = match self.wrapped.poll_next_unpin(cx) {
             Poll::Ready(Some(Ok(row))) => row,
             Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(e.into()))),
-            Poll::Ready(None) => return Poll::Ready(None),
+            Poll::Ready(None) => {
+                if let Some(deadline) = self.deadline.as_mut() {
+                    deadline.disarm();
+                }
+                return Poll::Ready(None);
+            }
             Poll::Pending => return Poll::Pending,
         };
 
@@ -254,6 +280,7 @@ impl QueryResult {
     ) -> impl Stream<Item = error::Result<V>> + 'a {
         QueryRows {
             wrapped: &mut self.wrapped,
+            deadline: self.deadline.as_mut(),
             phantom_data: PhantomData,
         }
     }

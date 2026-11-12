@@ -21,6 +21,7 @@ use crate::error;
 use crate::options::diagnostic_options::{DiagnosticsOptions, PingOptions, WaitUntilReadyOptions};
 use crate::results::diagnostics::{DiagnosticsResult, PingReport};
 use crate::retry::RetryStrategy;
+use crate::timeouts::{with_optional_timeout, Timeouts};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -90,16 +91,19 @@ pub(crate) enum DiagnosticsClientBackend {
 pub(crate) struct CouchbaseDiagnosticsClient {
     agent_provider: CouchbaseAgentProvider,
     default_retry_strategy: Arc<dyn RetryStrategy>,
+    default_timeouts: Timeouts,
 }
 
 impl CouchbaseDiagnosticsClient {
     pub fn new(
         agent_provider: CouchbaseAgentProvider,
         default_retry_strategy: Arc<dyn RetryStrategy>,
+        default_timeouts: Timeouts,
     ) -> Self {
         Self {
             agent_provider,
             default_retry_strategy,
+            default_timeouts,
         }
     }
 
@@ -143,6 +147,10 @@ impl CouchbaseDiagnosticsClient {
     }
 
     async fn wait_until_ready(&self, opts: WaitUntilReadyOptions) -> error::Result<()> {
+        with_optional_timeout(opts.timeout, false, self.wait_until_ready_inner(opts)).await
+    }
+
+    async fn wait_until_ready_inner(&self, opts: WaitUntilReadyOptions) -> error::Result<()> {
         let agent = self.agent_provider.get_agent().await;
 
         let mut core_opts = couchbase_core::options::waituntilready::WaitUntilReadyOptions::new()

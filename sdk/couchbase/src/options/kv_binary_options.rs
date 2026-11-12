@@ -34,6 +34,10 @@ pub struct AppendOptions {
     pub cas: Option<u64>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl AppendOptions {
@@ -56,6 +60,12 @@ impl AppendOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`BinaryCollection::prepend`](crate::collection::BinaryCollection).
@@ -68,6 +78,10 @@ pub struct PrependOptions {
     pub cas: Option<u64>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl PrependOptions {
@@ -90,6 +104,12 @@ impl PrependOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`BinaryCollection::increment`](crate::collection::BinaryCollection).
@@ -106,6 +126,10 @@ pub struct IncrementOptions {
     pub durability_level: Option<DurabilityLevel>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl IncrementOptions {
@@ -138,6 +162,12 @@ impl IncrementOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`BinaryCollection::decrement`](crate::collection::BinaryCollection).
@@ -154,6 +184,10 @@ pub struct DecrementOptions {
     pub durability_level: Option<DurabilityLevel>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl DecrementOptions {
@@ -184,6 +218,12 @@ impl DecrementOptions {
     /// Sets a custom retry strategy for this operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }

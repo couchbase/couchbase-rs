@@ -26,6 +26,7 @@ use crate::options::user_mgmt_options::{
     UpsertUserOptions,
 };
 use crate::retry::RetryStrategy;
+use crate::timeouts::{with_timeout, Timeouts};
 use std::sync::Arc;
 
 const DEFAULT_AUTH_DOMAIN: &str = "local";
@@ -186,16 +187,19 @@ pub(crate) enum UserMgmtClientBackend {
 pub(crate) struct CouchbaseUserMgmtClient {
     agent_provider: CouchbaseAgentProvider,
     default_retry_strategy: Arc<dyn RetryStrategy>,
+    default_timeouts: Timeouts,
 }
 
 impl CouchbaseUserMgmtClient {
     pub fn new(
         agent_provider: CouchbaseAgentProvider,
         default_retry_strategy: Arc<dyn RetryStrategy>,
+        default_timeouts: Timeouts,
     ) -> Self {
         Self {
             agent_provider,
             default_retry_strategy,
+            default_timeouts,
         }
     }
 
@@ -203,20 +207,24 @@ impl CouchbaseUserMgmtClient {
         &self,
         opts: GetAllUsersOptions,
     ) -> error::Result<Vec<UserAndMetadata>> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        let opts = couchbase_core::options::management::GetAllUsersOptions::new(
-            opts.auth_domain.as_deref().unwrap_or(DEFAULT_AUTH_DOMAIN),
-        )
-        .retry_strategy(retry);
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, false, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            let opts = couchbase_core::options::management::GetAllUsersOptions::new(
+                opts.auth_domain.as_deref().unwrap_or(DEFAULT_AUTH_DOMAIN),
+            )
+            .retry_strategy(retry);
 
-        let users = CouchbaseAgentProvider::upgrade_agent(agent)?
-            .get_all_users(&opts)
-            .await?;
+            let users = CouchbaseAgentProvider::upgrade_agent(agent)?
+                .get_all_users(&opts)
+                .await?;
 
-        Ok(users.into_iter().map(|u| u.into()).collect())
+            Ok(users.into_iter().map(|u| u.into()).collect())
+        })
+        .await
     }
 
     pub async fn get_user(
@@ -224,74 +232,90 @@ impl CouchbaseUserMgmtClient {
         username: String,
         opts: GetUserOptions,
     ) -> error::Result<UserAndMetadata> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        let opts = couchbase_core::options::management::GetUserOptions::new(
-            &username,
-            opts.auth_domain.as_deref().unwrap_or(DEFAULT_AUTH_DOMAIN),
-        )
-        .retry_strategy(retry);
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, false, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            let opts = couchbase_core::options::management::GetUserOptions::new(
+                &username,
+                opts.auth_domain.as_deref().unwrap_or(DEFAULT_AUTH_DOMAIN),
+            )
+            .retry_strategy(retry);
 
-        let user = CouchbaseAgentProvider::upgrade_agent(agent)?
-            .get_user(&opts)
-            .await?;
+            let user = CouchbaseAgentProvider::upgrade_agent(agent)?
+                .get_user(&opts)
+                .await?;
 
-        Ok(user.into())
+            Ok(user.into())
+        })
+        .await
     }
 
     pub async fn upsert_user(&self, user: User, opts: UpsertUserOptions) -> error::Result<()> {
-        let agent = self.agent_provider.get_agent().await;
-        let cuser = user.into();
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let cuser = user.into();
 
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        let opts = couchbase_core::options::management::UpsertUserOptions::new(
-            &cuser,
-            opts.auth_domain.as_deref().unwrap_or(DEFAULT_AUTH_DOMAIN),
-        )
-        .retry_strategy(retry);
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            let opts = couchbase_core::options::management::UpsertUserOptions::new(
+                &cuser,
+                opts.auth_domain.as_deref().unwrap_or(DEFAULT_AUTH_DOMAIN),
+            )
+            .retry_strategy(retry);
 
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .upsert_user(&opts)
-            .await?;
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .upsert_user(&opts)
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     pub async fn drop_user(&self, username: String, opts: DropUserOptions) -> error::Result<()> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        let opts = couchbase_core::options::management::DeleteUserOptions::new(
-            &username,
-            opts.auth_domain.as_deref().unwrap_or(DEFAULT_AUTH_DOMAIN),
-        )
-        .retry_strategy(retry);
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            let opts = couchbase_core::options::management::DeleteUserOptions::new(
+                &username,
+                opts.auth_domain.as_deref().unwrap_or(DEFAULT_AUTH_DOMAIN),
+            )
+            .retry_strategy(retry);
 
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .delete_user(&opts)
-            .await?;
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .delete_user(&opts)
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     pub async fn get_roles(&self, opts: GetRolesOptions) -> error::Result<Vec<RoleAndDescription>> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        let opts =
-            couchbase_core::options::management::GetRolesOptions::new().retry_strategy(retry);
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, false, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            let opts =
+                couchbase_core::options::management::GetRolesOptions::new().retry_strategy(retry);
 
-        let roles = CouchbaseAgentProvider::upgrade_agent(agent)?
-            .get_roles(&opts)
-            .await?;
+            let roles = CouchbaseAgentProvider::upgrade_agent(agent)?
+                .get_roles(&opts)
+                .await?;
 
-        Ok(roles.into_iter().map(|r| r.into()).collect())
+            Ok(roles.into_iter().map(|r| r.into()).collect())
+        })
+        .await
     }
 
     pub async fn get_group(
@@ -299,50 +323,62 @@ impl CouchbaseUserMgmtClient {
         group_name: String,
         opts: GetGroupOptions,
     ) -> error::Result<Group> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        let opts = couchbase_core::options::management::GetGroupOptions::new(&group_name)
-            .retry_strategy(retry);
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, false, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            let opts = couchbase_core::options::management::GetGroupOptions::new(&group_name)
+                .retry_strategy(retry);
 
-        let group = CouchbaseAgentProvider::upgrade_agent(agent)?
-            .get_group(&opts)
-            .await?;
+            let group = CouchbaseAgentProvider::upgrade_agent(agent)?
+                .get_group(&opts)
+                .await?;
 
-        Ok(group.into())
+            Ok(group.into())
+        })
+        .await
     }
 
     pub async fn get_all_groups(&self, opts: GetAllGroupsOptions) -> error::Result<Vec<Group>> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        let opts =
-            couchbase_core::options::management::GetAllGroupsOptions::new().retry_strategy(retry);
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, false, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            let opts = couchbase_core::options::management::GetAllGroupsOptions::new()
+                .retry_strategy(retry);
 
-        let groups = CouchbaseAgentProvider::upgrade_agent(agent)?
-            .get_all_groups(&opts)
-            .await?;
+            let groups = CouchbaseAgentProvider::upgrade_agent(agent)?
+                .get_all_groups(&opts)
+                .await?;
 
-        Ok(groups.into_iter().map(|g| g.into()).collect())
+            Ok(groups.into_iter().map(|g| g.into()).collect())
+        })
+        .await
     }
 
     pub async fn upsert_group(&self, group: Group, opts: UpsertGroupOptions) -> error::Result<()> {
-        let agent = self.agent_provider.get_agent().await;
-        let cgroup = group.into();
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let cgroup = group.into();
 
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        let opts = couchbase_core::options::management::UpsertGroupOptions::new(&cgroup)
-            .retry_strategy(retry);
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            let opts = couchbase_core::options::management::UpsertGroupOptions::new(&cgroup)
+                .retry_strategy(retry);
 
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .upsert_group(&opts)
-            .await?;
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .upsert_group(&opts)
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     pub async fn drop_group(
@@ -350,18 +386,22 @@ impl CouchbaseUserMgmtClient {
         group_name: String,
         opts: DropGroupOptions,
     ) -> error::Result<()> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        let opts = couchbase_core::options::management::DeleteGroupOptions::new(&group_name)
-            .retry_strategy(retry);
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            let opts = couchbase_core::options::management::DeleteGroupOptions::new(&group_name)
+                .retry_strategy(retry);
 
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .delete_group(&opts)
-            .await?;
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .delete_group(&opts)
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     pub async fn change_password(
@@ -369,18 +409,23 @@ impl CouchbaseUserMgmtClient {
         new_password: String,
         opts: ChangePasswordOptions,
     ) -> error::Result<()> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        let opts = couchbase_core::options::management::ChangePasswordOptions::new(&new_password)
-            .retry_strategy(retry);
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            let opts =
+                couchbase_core::options::management::ChangePasswordOptions::new(&new_password)
+                    .retry_strategy(retry);
 
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .change_password(&opts)
-            .await?;
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .change_password(&opts)
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     pub fn tracing_client(&self) -> CouchbaseTracingClient {

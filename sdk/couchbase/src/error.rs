@@ -214,6 +214,8 @@ impl StdError for Error {}
 /// | [`DocumentExists`](ErrorKind::DocumentExists) | `insert` when the document already exists |
 /// | [`CasMismatch`](ErrorKind::CasMismatch) | CAS-guarded operation with a stale CAS value |
 /// | [`ServerTimeout`](ErrorKind::ServerTimeout) | Operation timed out on the server |
+/// | [`UnambiguousTimeout`](ErrorKind::UnambiguousTimeout) | Read-only operation exceeded its timeout |
+/// | [`AmbiguousTimeout`](ErrorKind::AmbiguousTimeout) | Mutating operation exceeded its timeout; it may have been applied |
 /// | [`InvalidArgument`](ErrorKind::InvalidArgument) | Bad argument passed to an operation |
 /// | [`DocumentLocked`](ErrorKind::DocumentLocked) | Attempting to mutate a locked document |
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -265,6 +267,12 @@ pub enum ErrorKind {
     QuotaLimitedFailure,
     /// The request was canceled before completion.
     RequestCanceled,
+    /// The operation did not complete within its timeout. It was read-only, so it had no
+    /// effect on the server and can be retried safely.
+    UnambiguousTimeout,
+    /// The operation did not complete within its timeout. It may or may not have been applied
+    /// on the server.
+    AmbiguousTimeout,
 
     // Key Value Error Definitions RFC#58@16
     /// The document was not found in the collection.
@@ -460,6 +468,8 @@ impl Display for ErrorKind {
             ErrorKind::GroupExists => "group exists",
             ErrorKind::BucketNotFlushable => "bucket not flushable",
             ErrorKind::ServerTimeout => "server timeout",
+            ErrorKind::UnambiguousTimeout => "unambiguous timeout",
+            ErrorKind::AmbiguousTimeout => "ambiguous timeout",
         };
 
         write!(f, "{msg}")
@@ -470,6 +480,8 @@ impl MetricsName for ErrorKind {
     fn metrics_name(&self) -> &'static str {
         match self {
             ErrorKind::ServerTimeout => "ServerTimeout",
+            ErrorKind::UnambiguousTimeout => "UnambiguousTimeout",
+            ErrorKind::AmbiguousTimeout => "AmbiguousTimeout",
             ErrorKind::ClusterDropped => "ClusterDropped",
             ErrorKind::InvalidArgument(_) => "InvalidArgument",
             ErrorKind::ServiceNotAvailable(_) => "ServiceNotAvailable",

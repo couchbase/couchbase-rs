@@ -20,6 +20,7 @@
 
 use crate::retry::RetryStrategy;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Options for retrieving a single user.
 ///
@@ -31,6 +32,8 @@ pub struct GetUserOptions {
     pub auth_domain: Option<String>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetUserOptions {
@@ -50,6 +53,12 @@ impl GetUserOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for listing all users.
@@ -62,6 +71,8 @@ pub struct GetAllUsersOptions {
     pub auth_domain: Option<String>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetAllUsersOptions {
@@ -81,6 +92,12 @@ impl GetAllUsersOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for creating or updating a user.
@@ -93,6 +110,8 @@ pub struct UpsertUserOptions {
     pub auth_domain: Option<String>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl UpsertUserOptions {
@@ -112,6 +131,12 @@ impl UpsertUserOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for dropping a user.
@@ -124,6 +149,8 @@ pub struct DropUserOptions {
     pub auth_domain: Option<String>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl DropUserOptions {
@@ -143,6 +170,12 @@ impl DropUserOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for listing all available roles.
@@ -151,6 +184,8 @@ impl DropUserOptions {
 pub struct GetRolesOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetRolesOptions {
@@ -164,6 +199,12 @@ impl GetRolesOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for retrieving a single group.
@@ -172,6 +213,8 @@ impl GetRolesOptions {
 pub struct GetGroupOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetGroupOptions {
@@ -185,6 +228,12 @@ impl GetGroupOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for listing all groups.
@@ -193,6 +242,8 @@ impl GetGroupOptions {
 pub struct GetAllGroupsOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetAllGroupsOptions {
@@ -206,6 +257,12 @@ impl GetAllGroupsOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for creating or updating a group.
@@ -214,6 +271,8 @@ impl GetAllGroupsOptions {
 pub struct UpsertGroupOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl UpsertGroupOptions {
@@ -227,6 +286,12 @@ impl UpsertGroupOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for dropping a group.
@@ -235,6 +300,8 @@ impl UpsertGroupOptions {
 pub struct DropGroupOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl DropGroupOptions {
@@ -248,6 +315,12 @@ impl DropGroupOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for changing the current user's password.
@@ -256,6 +329,8 @@ impl DropGroupOptions {
 pub struct ChangePasswordOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl ChangePasswordOptions {
@@ -267,6 +342,12 @@ impl ChangePasswordOptions {
     /// Sets a custom retry strategy for this operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }
