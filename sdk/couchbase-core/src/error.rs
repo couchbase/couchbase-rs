@@ -55,6 +55,10 @@ impl StdError for Error {
             ErrorKind::Search(err) => err.source(),
             ErrorKind::Http(err) => err.source(),
             ErrorKind::Mgmt(err) => err.source(),
+            ErrorKind::Bootstrap(err) => err
+                .seed_errors
+                .last()
+                .map(|e| &e.error as &(dyn StdError + 'static)),
             _ => None,
         }
     }
@@ -185,6 +189,8 @@ pub enum ErrorKind {
     Internal {
         msg: String,
     },
+    /// The agent could not fetch its first cluster config from any seed.
+    Bootstrap(BootstrapError),
 }
 
 impl Display for ErrorKind {
@@ -254,6 +260,7 @@ impl Display for ErrorKind {
                 "invalid replica: {requested_replica}, num servers: {num_servers}"
             ),
             ErrorKind::Compression { msg } => write!(f, "compression error: {msg}"),
+            ErrorKind::Bootstrap(err) => write!(f, "{err}"),
         }
     }
 }
@@ -290,7 +297,132 @@ impl MetricsName for ErrorKind {
             ErrorKind::Message { .. } => "_OTHER",
             ErrorKind::Compression { .. } => "Compression",
             ErrorKind::Internal { .. } => "_OTHER",
+            ErrorKind::Bootstrap(_) => "_OTHER",
         }
+    }
+}
+
+/// Details of a failed agent bootstrap: why it stopped, and the last error seen on each seed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BootstrapError {
+    timed_out: bool,
+    seed_errors: Vec<BootstrapSeedError>,
+}
+
+impl BootstrapError {
+    pub(crate) fn new(timed_out: bool, seed_errors: Vec<BootstrapSeedError>) -> Self {
+        Self {
+            timed_out,
+            seed_errors,
+        }
+    }
+
+    /// Whether bootstrap stopped because the bootstrap timeout elapsed.
+    pub fn timed_out(&self) -> bool {
+        self.timed_out
+    }
+
+    /// The last error seen on each seed, in the order the seeds were first tried.
+    pub fn seed_errors(&self) -> &[BootstrapSeedError] {
+        &self.seed_errors
+    }
+
+    /// Whether every seed rejected the credentials.
+    pub fn is_authentication_failure(&self) -> bool {
+        !self.seed_errors.is_empty()
+            && self
+                .seed_errors
+                .iter()
+                .all(|e| is_authentication_error(&e.error))
+    }
+}
+
+impl Display for BootstrapError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.timed_out {
+            write!(f, "bootstrap timed out")?;
+        } else if self.is_authentication_failure() {
+            write!(f, "bootstrap failed: authentication failed on every seed")?;
+        } else {
+            write!(f, "bootstrap failed")?;
+        }
+
+        if self.seed_errors.is_empty() {
+            return write!(f, ", no seed responded");
+        }
+
+        write!(f, ", last error per seed: ")?;
+        for (i, e) in self.seed_errors.iter().enumerate() {
+            if i > 0 {
+                write!(f, "; ")?;
+            }
+            write!(f, "{e}")?;
+        }
+        Ok(())
+    }
+}
+
+/// The last error seen while fetching the first cluster config from one seed.
+#[derive(Debug, Clone)]
+pub struct BootstrapSeedError {
+    seed: String,
+    error: Error,
+}
+
+impl BootstrapSeedError {
+    pub(crate) fn new(seed: impl Into<String>, error: Error) -> Self {
+        Self {
+            seed: seed.into(),
+            error,
+        }
+    }
+
+    /// The seed address, as `host:port` for KV seeds or the endpoint URI for HTTP seeds.
+    pub fn seed(&self) -> &str {
+        &self.seed
+    }
+
+    pub fn error(&self) -> &Error {
+        &self.error
+    }
+}
+
+impl PartialEq for BootstrapSeedError {
+    fn eq(&self, other: &Self) -> bool {
+        self.seed == other.seed && self.error.kind() == other.error.kind()
+    }
+}
+
+impl Display for BootstrapSeedError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.seed, self.error)?;
+        if let Some(source) = self.error.source() {
+            write!(f, " - {source}")?;
+        }
+        Ok(())
+    }
+}
+
+// Whether the server rejected the credentials: a KV SASL auth failure, or an HTTP 401.
+pub(crate) fn is_authentication_error(err: &Error) -> bool {
+    match err.kind() {
+        ErrorKind::Memdx(e) => match e.kind() {
+            memdx::error::ErrorKind::Server(e) => matches!(
+                e.kind(),
+                memdx::error::ServerErrorKind::Auth { .. }
+                    | memdx::error::ServerErrorKind::UnknownStatus {
+                        status: memdx::status::Status::AuthError
+                    }
+            ),
+            _ => false,
+        },
+        ErrorKind::Mgmt(e) => match e.kind() {
+            crate::mgmtx::error::ErrorKind::Server(e) => {
+                e.kind() == &crate::mgmtx::error::ServerErrorKind::AccessDenied
+            }
+            _ => false,
+        },
+        _ => false,
     }
 }
 

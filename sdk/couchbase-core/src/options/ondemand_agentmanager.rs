@@ -21,6 +21,7 @@ use crate::authenticator::Authenticator;
 use crate::memdx::dispatcher::OrphanResponseHandler;
 use crate::options::agent::{
     AgentOptions, CompressionConfig, ConfigPollerConfig, HttpConfig, KvConfig, SeedConfig,
+    DEFAULT_BOOTSTRAP_TIMEOUT,
 };
 use crate::tls_config::TlsConfig;
 use std::time::Duration;
@@ -40,6 +41,8 @@ pub struct OnDemandAgentManagerOptions {
     pub kv_config: KvConfig,
     pub http_config: HttpConfig,
     pub tcp_keep_alive_time: Option<Duration>,
+    /// See [`AgentOptions::bootstrap_timeout`].
+    pub bootstrap_timeout: Duration,
     pub orphan_response_handler: Option<OrphanResponseHandler>,
     /// Wrap sensitive values in log output in redaction tags. See
     /// [`log_redaction`](crate::log_redaction). Redaction is process-wide, so creating an agent
@@ -60,6 +63,7 @@ impl OnDemandAgentManagerOptions {
             kv_config: KvConfig::default(),
             http_config: HttpConfig::default(),
             tcp_keep_alive_time: None,
+            bootstrap_timeout: DEFAULT_BOOTSTRAP_TIMEOUT,
             orphan_response_handler: None,
             log_redaction: false,
         }
@@ -115,6 +119,11 @@ impl OnDemandAgentManagerOptions {
         self
     }
 
+    pub fn bootstrap_timeout(mut self, bootstrap_timeout: Duration) -> Self {
+        self.bootstrap_timeout = bootstrap_timeout;
+        self
+    }
+
     pub fn orphan_reporter_handler(
         mut self,
         orphan_response_handler: Option<OrphanResponseHandler>,
@@ -143,6 +152,7 @@ impl From<OnDemandAgentManagerOptions> for AgentOptions {
             kv_config: opts.kv_config,
             http_config: opts.http_config,
             tcp_keep_alive_time: opts.tcp_keep_alive_time,
+            bootstrap_timeout: opts.bootstrap_timeout,
             orphan_response_handler: opts.orphan_response_handler,
             log_redaction: opts.log_redaction,
         }
@@ -162,6 +172,7 @@ impl From<AgentOptions> for OnDemandAgentManagerOptions {
             kv_config: opts.kv_config,
             http_config: opts.http_config,
             tcp_keep_alive_time: opts.tcp_keep_alive_time,
+            bootstrap_timeout: opts.bootstrap_timeout,
             orphan_response_handler: opts.orphan_response_handler,
             log_redaction: opts.log_redaction,
         }

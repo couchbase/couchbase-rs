@@ -139,7 +139,17 @@ impl OnDemandAgentManager {
         let mut opts: AgentOptions = self.opts.clone().into();
         opts.bucket_name = Some(bucket_name.clone());
 
-        let agent = Arc::new(Agent::new(opts).await?);
+        let agent = match Agent::new(opts).await {
+            Ok(agent) => Arc::new(agent),
+            Err(e) => {
+                // Release waiters so that they retry, rather than wait forever on an agent that
+                // will never be created.
+                let _slow_map = self.slow_map.lock().await;
+                self.notif_map.lock().await.remove(&bucket_name);
+                notif.notify_waiters();
+                return Err(e);
+            }
+        };
 
         let mut slow_map = self.slow_map.lock().await;
         slow_map.insert(bucket_name.clone(), agent);

@@ -74,6 +74,9 @@ pub struct ClusterOptions {
     pub tls_options: Option<TlsOptions>,
     /// TCP keep-alive interval.
     pub tcp_keep_alive_time: Option<Duration>,
+    /// Maximum time [`Cluster::connect`](crate::cluster::Cluster::connect) (and the first use of
+    /// a bucket) waits for a cluster config. See [`ClusterOptions::bootstrap_timeout`].
+    pub bootstrap_timeout: Option<Duration>,
     /// Configuration for the cluster map poller.
     pub poller_options: PollerOptions,
     /// Configuration for the HTTP client used by query, search, and management services.
@@ -100,6 +103,7 @@ impl Debug for ClusterOptions {
             .field("compression_mode", &self.compression_mode)
             .field("has_tls_options", &self.tls_options.is_some())
             .field("tcp_keep_alive_time", &self.tcp_keep_alive_time)
+            .field("bootstrap_timeout", &self.bootstrap_timeout)
             .field("poller_options", &self.poller_options)
             .field("http_options", &self.http_options)
             .field("kv_options", &self.kv_options)
@@ -117,6 +121,7 @@ impl ClusterOptions {
             compression_mode: None,
             tls_options: None,
             tcp_keep_alive_time: None,
+            bootstrap_timeout: None,
             poller_options: PollerOptions::new(),
             http_options: HttpOptions::new(),
             kv_options: KvOptions::new(),
@@ -143,6 +148,19 @@ impl ClusterOptions {
     /// Sets the TCP keep-alive interval.
     pub fn tcp_keep_alive_time(mut self, val: Duration) -> Self {
         self.tcp_keep_alive_time = Some(val);
+        self
+    }
+
+    /// Sets the maximum time to wait for the first cluster config. Defaults to 10 seconds.
+    ///
+    /// [`Cluster::connect`](crate::cluster::Cluster::connect) retries the seed nodes until one
+    /// returns a config. When this time elapses, it fails with
+    /// [`ErrorKind::OtherFailure`](crate::error::ErrorKind::OtherFailure) describing the last
+    /// error seen on each seed. If every seed rejects the credentials, it fails immediately with
+    /// [`ErrorKind::AuthenticationFailure`](crate::error::ErrorKind::AuthenticationFailure).
+    /// The same applies when a bucket is first used.
+    pub fn bootstrap_timeout(mut self, val: Duration) -> Self {
+        self.bootstrap_timeout = Some(val);
         self
     }
 
@@ -851,11 +869,12 @@ impl Display for ClusterOptions {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(
             f,
-            "{{ authenticator: {}, compression_mode: {:?}, tls_options: {}, tcp_keep_alive_time: {:?}, poller_options: {}, http_options: {}, kv_options: {}, orphan_reporter_options: {}, log_redaction: {:?} }}",
+            "{{ authenticator: {}, compression_mode: {:?}, tls_options: {}, tcp_keep_alive_time: {:?}, bootstrap_timeout: {:?}, poller_options: {}, http_options: {}, kv_options: {}, orphan_reporter_options: {}, log_redaction: {:?} }}",
             self.authenticator,
             self.compression_mode,
             if let Some(tls) = &self.tls_options {tls.to_string()} else {"none".to_string()},
             self.tcp_keep_alive_time,
+            self.bootstrap_timeout,
             self.poller_options,
             self.http_options,
             self.kv_options,
