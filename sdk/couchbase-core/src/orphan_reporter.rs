@@ -30,6 +30,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use tokio::sync::oneshot;
 use tokio::time::{interval_at, Instant, MissedTickBehavior};
 use tracing::{trace, warn};
 
@@ -116,19 +117,29 @@ impl PartialOrd for OrphanLogItem {
 
 // Orphan reporter - Currently only handles/receives KV orphans
 pub struct OrphanReporter {
-    total_count: Arc<AtomicU64>,
-    heap: Arc<RwLock<BinaryHeap<Reverse<OrphanLogItem>>>>,
+    inner: Arc<OrphanReporterInner>,
     sample_size: usize,
     reporter_interval: Duration,
 }
 
+// Shared by the reporter and its handles. The reporting task only holds a weak reference, and
+// stops once the last reporter or handle is dropped (which drops `_shutdown_tx`).
+struct OrphanReporterInner {
+    total_count: AtomicU64,
+    heap: RwLock<BinaryHeap<Reverse<OrphanLogItem>>>,
+    _shutdown_tx: oneshot::Sender<()>,
+}
+
 impl OrphanReporter {
     pub fn new(config: OrphanReporterConfig) -> Self {
-        let heap = Arc::new(RwLock::new(BinaryHeap::with_capacity(config.sample_size)));
-        let total_count = Arc::new(AtomicU64::new(0));
+        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
+        let inner = Arc::new(OrphanReporterInner {
+            total_count: AtomicU64::new(0),
+            heap: RwLock::new(BinaryHeap::with_capacity(config.sample_size)),
+            _shutdown_tx: shutdown_tx,
+        });
 
-        let heap_clone = heap.clone();
-        let total_count_clone = total_count.clone();
+        let weak_inner = Arc::downgrade(&inner);
 
         tokio::spawn(async move {
             trace!(
@@ -142,13 +153,27 @@ impl OrphanReporter {
 
             loop {
                 tokio::select! {
+                    _ = &mut shutdown_rx => {
+                        trace!("OrphanReporter stopped: no reporter or handle left");
+                        return;
+                    }
                     _ = tick.tick() => {
-                        let count = total_count_clone.swap(0, Ordering::Relaxed);
+                        let Some(inner) = weak_inner.upgrade() else {
+                            trace!("OrphanReporter stopped: no reporter or handle left");
+                            return;
+                        };
+                        let count = inner.total_count.swap(0, Ordering::Relaxed);
                         if count == 0 {
                             continue;
                         }
-                        let mut write_guard = heap_clone.write().unwrap();
-                        let obj = Self::create_log_object("kv".to_string(), mem::take(&mut write_guard), count);
+                        let items = {
+                            let mut write_guard = inner.heap.write().unwrap_or_else(|p| {
+                                warn!("OrphanReporter heap poisoned; continuing");
+                                p.into_inner()
+                            });
+                            mem::take(&mut *write_guard)
+                        };
+                        let obj = Self::create_log_object("kv".to_string(), items, count);
                         // Tagged as one span around the whole report rather than per value,
                         // so that the report stays parseable JSON. It carries local and remote
                         // sockets, and otherwise only durations and SDK-generated ids, so it is
@@ -159,20 +184,19 @@ impl OrphanReporter {
             }
         });
         Self {
-            total_count,
-            heap,
+            inner,
             sample_size: config.sample_size,
             reporter_interval: config.reporter_interval,
         }
     }
 
     pub fn get_handle(&self) -> Arc<dyn Fn(ResponsePacket, OrphanContext) + Send + Sync> {
-        let heap = self.heap.clone();
-        let total_count = self.total_count.clone();
+        let inner = self.inner.clone();
         let sample_size = self.sample_size;
 
         Arc::new(move |msg: ResponsePacket, ctx: OrphanContext| {
-            total_count.fetch_add(1, Ordering::Relaxed);
+            let heap = &inner.heap;
+            inner.total_count.fetch_add(1, Ordering::Relaxed);
 
             let server_dur = msg
                 .framing_extras

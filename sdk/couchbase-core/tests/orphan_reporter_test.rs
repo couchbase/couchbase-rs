@@ -76,6 +76,37 @@ fn captured_lines(writer: &CaptureWriter) -> Vec<String> {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn orphan_reporter_task_stops_when_dropped() {
+    let alive_tasks = || {
+        tokio::runtime::Handle::current()
+            .metrics()
+            .num_alive_tasks()
+    };
+    let baseline = alive_tasks();
+
+    let reporter = OrphanReporter::new(
+        OrphanReporterConfig::default().reporter_interval(Duration::from_secs(3600)),
+    );
+    let handle = reporter.get_handle();
+    tokio::task::yield_now().await;
+    assert_eq!(alive_tasks(), baseline + 1);
+
+    // The task must outlive the reporter while a handle is still in use.
+    drop(reporter);
+    tokio::task::yield_now().await;
+    assert_eq!(alive_tasks(), baseline + 1);
+
+    drop(handle);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while alive_tasks() > baseline {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("orphan reporter task should stop once the reporter and its handles are dropped");
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn orphan_reporter_emits_entries() {
     let writer = CaptureWriter::default();
     let subscriber = tracing_subscriber::fmt()
