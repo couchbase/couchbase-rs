@@ -20,6 +20,7 @@
 
 use crate::retry::RetryStrategy;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Options for retrieving a single search index by name.
 #[derive(Default, Debug, Clone)]
@@ -27,6 +28,8 @@ use std::sync::Arc;
 pub struct GetSearchIndexOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetSearchIndexOptions {
@@ -40,6 +43,12 @@ impl GetSearchIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for listing all search indexes.
@@ -48,6 +57,8 @@ impl GetSearchIndexOptions {
 pub struct GetAllSearchIndexesOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetAllSearchIndexesOptions {
@@ -61,6 +72,12 @@ impl GetAllSearchIndexesOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for creating or updating a search index.
@@ -69,6 +86,8 @@ impl GetAllSearchIndexesOptions {
 pub struct UpsertSearchIndexOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl UpsertSearchIndexOptions {
@@ -82,6 +101,12 @@ impl UpsertSearchIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for dropping a search index.
@@ -90,6 +115,8 @@ impl UpsertSearchIndexOptions {
 pub struct DropSearchIndexOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl DropSearchIndexOptions {
@@ -103,6 +130,12 @@ impl DropSearchIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for analyzing a document against a search index.
@@ -111,6 +144,8 @@ impl DropSearchIndexOptions {
 pub struct AnalyzeDocumentOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl AnalyzeDocumentOptions {
@@ -124,6 +159,12 @@ impl AnalyzeDocumentOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for retrieving the count of indexed documents in a search index.
@@ -132,6 +173,8 @@ impl AnalyzeDocumentOptions {
 pub struct GetIndexedDocumentsCountOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetIndexedDocumentsCountOptions {
@@ -145,6 +188,12 @@ impl GetIndexedDocumentsCountOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for pausing document ingestion on a search index.
@@ -153,6 +202,8 @@ impl GetIndexedDocumentsCountOptions {
 pub struct PauseIngestSearchIndexOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl PauseIngestSearchIndexOptions {
@@ -166,6 +217,12 @@ impl PauseIngestSearchIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for resuming document ingestion on a search index.
@@ -174,6 +231,8 @@ impl PauseIngestSearchIndexOptions {
 pub struct ResumeIngestSearchIndexOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl ResumeIngestSearchIndexOptions {
@@ -187,6 +246,12 @@ impl ResumeIngestSearchIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for allowing querying on a search index.
@@ -195,6 +260,8 @@ impl ResumeIngestSearchIndexOptions {
 pub struct AllowQueryingSearchIndexOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl AllowQueryingSearchIndexOptions {
@@ -208,6 +275,12 @@ impl AllowQueryingSearchIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for disallowing querying on a search index.
@@ -216,6 +289,8 @@ impl AllowQueryingSearchIndexOptions {
 pub struct DisallowQueryingSearchIndexOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl DisallowQueryingSearchIndexOptions {
@@ -229,6 +304,12 @@ impl DisallowQueryingSearchIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for freezing the plan of a search index (preventing it from being reassigned).
@@ -237,6 +318,8 @@ impl DisallowQueryingSearchIndexOptions {
 pub struct FreezePlanSearchIndexOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl FreezePlanSearchIndexOptions {
@@ -250,6 +333,12 @@ impl FreezePlanSearchIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for unfreezing the plan of a search index (allowing reassignment).
@@ -258,6 +347,8 @@ impl FreezePlanSearchIndexOptions {
 pub struct UnfreezePlanSearchIndexOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl UnfreezePlanSearchIndexOptions {
@@ -269,6 +360,12 @@ impl UnfreezePlanSearchIndexOptions {
     /// Sets the retry strategy for the operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }

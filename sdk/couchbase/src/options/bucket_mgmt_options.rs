@@ -25,6 +25,7 @@
 //! specifying a retry strategy in case of transient failures.
 use crate::retry::RetryStrategy;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Options for [`BucketManager::get_all_buckets`](crate::management::buckets::bucket_manager::BucketManager::get_all_buckets).
 #[derive(Default, Debug, Clone)]
@@ -32,6 +33,8 @@ use std::sync::Arc;
 pub struct GetAllBucketsOptions {
     /// The retry strategy to use in case of transient failures.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetAllBucketsOptions {
@@ -45,6 +48,12 @@ impl GetAllBucketsOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`BucketManager::get_bucket`](crate::management::buckets::bucket_manager::BucketManager::get_bucket).
@@ -53,6 +62,8 @@ impl GetAllBucketsOptions {
 pub struct GetBucketOptions {
     /// The retry strategy to use in case of transient failures.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetBucketOptions {
@@ -66,6 +77,12 @@ impl GetBucketOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`BucketManager::create_bucket`](crate::management::buckets::bucket_manager::BucketManager::create_bucket).
@@ -74,6 +91,8 @@ impl GetBucketOptions {
 pub struct CreateBucketOptions {
     /// The retry strategy to use in case of transient failures.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl CreateBucketOptions {
@@ -87,6 +106,12 @@ impl CreateBucketOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`BucketManager::update_bucket`](crate::management::buckets::bucket_manager::BucketManager::update_bucket).
@@ -95,6 +120,8 @@ impl CreateBucketOptions {
 pub struct UpdateBucketOptions {
     /// The retry strategy to use in case of transient failures.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl UpdateBucketOptions {
@@ -108,6 +135,12 @@ impl UpdateBucketOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`BucketManager::drop_bucket`](crate::management::buckets::bucket_manager::BucketManager::drop_bucket).
@@ -116,6 +149,8 @@ impl UpdateBucketOptions {
 pub struct DropBucketOptions {
     /// The retry strategy to use in case of transient failures.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl DropBucketOptions {
@@ -129,6 +164,12 @@ impl DropBucketOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`BucketManager::flush_bucket`](crate::management::buckets::bucket_manager::BucketManager::flush_bucket).
@@ -137,6 +178,8 @@ impl DropBucketOptions {
 pub struct FlushBucketOptions {
     /// The retry strategy to use in case of transient failures.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl FlushBucketOptions {
@@ -148,6 +191,12 @@ impl FlushBucketOptions {
     /// Sets the retry strategy.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }

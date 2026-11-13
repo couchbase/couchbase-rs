@@ -146,6 +146,9 @@ pub struct QueryOptions {
     pub use_replica: Option<ReplicaLevel>,
     /// Custom retry strategy for this query.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Covers the consumption of the result rows. Defaults to
+    /// [`TimeoutOptions::query_timeout`](crate::options::cluster_options::TimeoutOptions::query_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl QueryOptions {
@@ -308,6 +311,12 @@ impl QueryOptions {
     /// Sets a custom retry strategy for this operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }

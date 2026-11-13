@@ -50,6 +50,10 @@ pub struct UpsertOptions {
     pub preserve_expiry: Option<bool>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl UpsertOptions {
@@ -81,6 +85,12 @@ impl UpsertOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`Collection::insert`](crate::collection::Collection).
@@ -93,6 +103,10 @@ pub struct InsertOptions {
     pub durability_level: Option<DurabilityLevel>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl InsertOptions {
@@ -118,6 +132,12 @@ impl InsertOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`Collection::replace`](crate::collection::Collection).
@@ -137,6 +157,10 @@ pub struct ReplaceOptions {
     pub cas: Option<u64>,
     /// Override the default retry strategy.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl ReplaceOptions {
@@ -174,6 +198,12 @@ impl ReplaceOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`Collection::get`](crate::collection::Collection).
@@ -189,6 +219,10 @@ pub struct GetOptions {
     pub projections: Option<Vec<String>>,
     /// Override the default retry strategy.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl GetOptions {
@@ -213,6 +247,12 @@ impl GetOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`Collection::get_replica`](crate::collection::Collection).
@@ -221,6 +261,10 @@ impl GetOptions {
 pub struct GetReplicaOptions {
     /// Override the default retry strategy.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl GetReplicaOptions {
@@ -234,6 +278,12 @@ impl GetReplicaOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`Collection::exists`](crate::collection::Collection).
@@ -242,6 +292,10 @@ impl GetReplicaOptions {
 pub struct ExistsOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl ExistsOptions {
@@ -253,6 +307,12 @@ impl ExistsOptions {
     /// Sets a custom retry strategy for this operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }
@@ -270,6 +330,10 @@ pub struct RemoveOptions {
     pub cas: Option<u64>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl RemoveOptions {
@@ -295,6 +359,12 @@ impl RemoveOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`Collection::get_and_touch`](crate::collection::Collection).
@@ -303,6 +373,10 @@ impl RemoveOptions {
 pub struct GetAndTouchOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl GetAndTouchOptions {
@@ -316,6 +390,12 @@ impl GetAndTouchOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`Collection::get_and_lock`](crate::collection::Collection).
@@ -324,6 +404,10 @@ impl GetAndTouchOptions {
 pub struct GetAndLockOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl GetAndLockOptions {
@@ -337,6 +421,12 @@ impl GetAndLockOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`Collection::unlock`](crate::collection::Collection).
@@ -345,6 +435,10 @@ impl GetAndLockOptions {
 pub struct UnlockOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl UnlockOptions {
@@ -358,6 +452,12 @@ impl UnlockOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`Collection::touch`](crate::collection::Collection).
@@ -366,6 +466,10 @@ impl UnlockOptions {
 pub struct TouchOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl TouchOptions {
@@ -379,6 +483,12 @@ impl TouchOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for [`Collection::lookup_in`](crate::collection::Collection).
@@ -389,6 +499,10 @@ pub struct LookupInOptions {
     pub access_deleted: Option<bool>,
     /// Custom retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl LookupInOptions {
@@ -406,6 +520,12 @@ impl LookupInOptions {
     /// Sets a custom retry strategy for this operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }
@@ -441,6 +561,10 @@ pub struct MutateInOptions {
     pub access_deleted: Option<bool>,
     /// Custom retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::kv_timeout`](crate::options::cluster_options::TimeoutOptions::kv_timeout), or
+    /// [`TimeoutOptions::kv_durable_timeout`](crate::options::cluster_options::TimeoutOptions::kv_durable_timeout) when a durability level is
+    /// set.
+    pub timeout: Option<Duration>,
 }
 
 impl MutateInOptions {
@@ -489,6 +613,12 @@ impl MutateInOptions {
     /// Sets a custom retry strategy for this operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }

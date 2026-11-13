@@ -50,7 +50,17 @@ pub fn cluster_options(
     authenticator: Authenticator,
     opts: Option<&ClusterConfig>,
 ) -> crate::cluster::options::ClusterOptions {
-    let mut cluster_options = ClusterOptions::new(authenticator);
+    // The performer enforces the driver's timeouts itself, around each command, so the SDK's own
+    // timeouts are set high enough never to fire first.
+    let sdk_timeout = std::time::Duration::from_secs(24 * 60 * 60);
+    let mut cluster_options = ClusterOptions::new(authenticator).timeout_options(
+        couchbase::options::cluster_options::TimeoutOptions::new()
+            .kv_timeout(sdk_timeout)
+            .kv_durable_timeout(sdk_timeout)
+            .query_timeout(sdk_timeout)
+            .search_timeout(sdk_timeout)
+            .management_timeout(sdk_timeout),
+    );
 
     let timeout_options = if let Some(opts) = opts {
         let mut kv_options = KvOptions::new();

@@ -33,6 +33,7 @@ use crate::clients::search_index_mgmt_client::{
 };
 use crate::clients::tracing_client::{CouchbaseTracingClient, TracingClient, TracingClientBackend};
 use crate::retry::RetryStrategy;
+use crate::timeouts::Timeouts;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -137,6 +138,7 @@ pub(crate) struct CouchbaseScopeClient {
     bucket_name: String,
     name: String,
     default_retry_strategy: Arc<dyn RetryStrategy>,
+    default_timeouts: Timeouts,
 }
 
 impl CouchbaseScopeClient {
@@ -145,12 +147,14 @@ impl CouchbaseScopeClient {
         bucket_name: String,
         name: String,
         default_retry_strategy: Arc<dyn RetryStrategy>,
+        default_timeouts: Timeouts,
     ) -> Self {
         Self {
             agent_provider,
             bucket_name,
             name,
             default_retry_strategy,
+            default_timeouts,
         }
     }
 
@@ -170,6 +174,7 @@ impl CouchbaseScopeClient {
                 self.name().to_string(),
                 name,
                 self.default_retry_strategy.clone(),
+                self.default_timeouts,
             ),
         ))
     }
@@ -182,6 +187,7 @@ impl CouchbaseScopeClient {
                 scope_name: self.name().to_string(),
             },
             self.default_retry_strategy.clone(),
+            self.default_timeouts,
         )
     }
 
@@ -193,6 +199,7 @@ impl CouchbaseScopeClient {
                 scope_name: self.name().to_string(),
             },
             self.default_retry_strategy.clone(),
+            self.default_timeouts,
         )
     }
 
@@ -204,6 +211,7 @@ impl CouchbaseScopeClient {
                 scope_name: self.name().to_string(),
             },
             self.default_retry_strategy.clone(),
+            self.default_timeouts,
         )
     }
 
