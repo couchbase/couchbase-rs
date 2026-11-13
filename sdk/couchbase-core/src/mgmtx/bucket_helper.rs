@@ -102,11 +102,7 @@ impl<'a> EnsureBucketHelper<'a> {
             }
         }
 
-        if self.want_missing {
-            return Ok(false);
-        }
-
-        Ok(true)
+        Ok(!self.want_missing)
     }
 
     pub async fn poll<C: Client>(

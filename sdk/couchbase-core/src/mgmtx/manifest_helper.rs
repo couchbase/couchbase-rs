@@ -74,11 +74,7 @@ impl<'a> EnsureManifestHelper<'a> {
             error::Error::new_message_error(format!("failed to parse manifest uid: {e}"))
         })?;
 
-        if manifest_uid < self.manifest_uid {
-            return Ok(false);
-        }
-
-        Ok(true)
+        Ok(manifest_uid >= self.manifest_uid)
     }
 
     pub async fn poll<C: Client>(
