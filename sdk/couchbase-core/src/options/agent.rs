@@ -25,6 +25,8 @@ use crate::tls_config::TlsConfig;
 use std::fmt::{Debug, Display};
 use std::time::Duration;
 
+pub(crate) const DEFAULT_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(10);
+
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct AgentOptions {
@@ -43,6 +45,10 @@ pub struct AgentOptions {
     pub kv_config: KvConfig,
     pub http_config: HttpConfig,
     pub tcp_keep_alive_time: Option<Duration>,
+    /// Maximum time to wait for the first cluster config when creating the agent. If no seed
+    /// returns a config within this time, agent creation fails with
+    /// [`ErrorKind::Bootstrap`](crate::error::ErrorKind::Bootstrap).
+    pub bootstrap_timeout: Duration,
     pub orphan_response_handler: Option<OrphanResponseHandler>,
     /// Wrap sensitive values in log output in redaction tags. See
     /// [`log_redaction`](crate::log_redaction). Redaction is process-wide, so creating an agent
@@ -63,6 +69,7 @@ impl Debug for AgentOptions {
             .field("kv_config", &self.kv_config)
             .field("http_config", &self.http_config)
             .field("tcp_keep_alive_time", &self.tcp_keep_alive_time)
+            .field("bootstrap_timeout", &self.bootstrap_timeout)
             .field("log_redaction", &self.log_redaction)
             .finish()
     }
@@ -82,6 +89,7 @@ impl AgentOptions {
             kv_config: KvConfig::default(),
             http_config: HttpConfig::default(),
             tcp_keep_alive_time: None,
+            bootstrap_timeout: DEFAULT_BOOTSTRAP_TIMEOUT,
             orphan_response_handler: None,
             log_redaction: false,
         }
@@ -139,6 +147,11 @@ impl AgentOptions {
 
     pub fn tcp_keep_alive_time(mut self, tcp_keep_alive: Duration) -> Self {
         self.tcp_keep_alive_time = Some(tcp_keep_alive);
+        self
+    }
+
+    pub fn bootstrap_timeout(mut self, bootstrap_timeout: Duration) -> Self {
+        self.bootstrap_timeout = bootstrap_timeout;
         self
     }
 
@@ -481,7 +494,7 @@ impl AgentOptions {
 
         write!(
             out,
-            "{{ seed_config: {}, auth_mechanisms: {:?}, tls_config: {}, bucket_name: {:?}, network: {:?}, compression_config: {}, config_poller_config: {}, kv_config: {}, http_config: {}, tcp_keep_alive_time: {:?}, orphan_response_handler: {}, log_redaction: {} }}",
+            "{{ seed_config: {}, auth_mechanisms: {:?}, tls_config: {}, bucket_name: {:?}, network: {:?}, compression_config: {}, config_poller_config: {}, kv_config: {}, http_config: {}, tcp_keep_alive_time: {:?}, bootstrap_timeout: {:?}, orphan_response_handler: {}, log_redaction: {} }}",
             seed_config,
             self.auth_mechanisms,
             tls_config,
@@ -492,6 +505,7 @@ impl AgentOptions {
             self.kv_config,
             self.http_config,
             self.tcp_keep_alive_time,
+            self.bootstrap_timeout,
             if self.orphan_response_handler.is_some() { "Some" } else { "None" },
             self.log_redaction,
         )

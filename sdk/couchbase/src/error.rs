@@ -719,6 +719,14 @@ impl From<couchbase_core::error::Error> for Error {
                 kind: Box::new(ErrorKind::OtherFailure(msg.to_string())),
                 context: Box::new(None),
             },
+            couchbase_core::error::ErrorKind::Bootstrap(e) => Error {
+                kind: Box::new(if e.is_authentication_failure() {
+                    ErrorKind::AuthenticationFailure
+                } else {
+                    ErrorKind::OtherFailure(e.to_string())
+                }),
+                context: Box::new(None),
+            },
             _ => Error {
                 kind: Box::new(ErrorKind::OtherFailure(value.to_string())),
                 context: Box::new(None),
