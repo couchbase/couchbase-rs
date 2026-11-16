@@ -34,7 +34,9 @@ use crate::configparser::ConfigParser;
 use crate::crudcomponent::CrudComponent;
 use crate::diagnosticscomponent::{DiagnosticsComponent, DiagnosticsComponentConfig};
 use crate::errmapcomponent::ErrMapComponent;
-use crate::error::{Error, ErrorKind, Result};
+use crate::error::{
+    is_authentication_error, BootstrapError, BootstrapSeedError, Error, ErrorKind, Result,
+};
 use crate::features::BucketFeature;
 use crate::httpcomponent::HttpComponent;
 use crate::httpx::client::{ClientConfig, ReqwestClient};
@@ -475,6 +477,7 @@ impl Agent {
             http_client.clone(),
             err_map_component.clone(),
             connect_timeout,
+            opts.bootstrap_timeout,
         )
         .await?;
 
@@ -735,6 +738,7 @@ impl Agent {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn get_first_config<C: httpx::client::Client>(
         client_name: String,
         kv_targets: HashMap<String, KvTarget>,
@@ -743,10 +747,70 @@ impl Agent {
         http_client: Arc<C>,
         err_map_component: Arc<ErrMapComponent>,
         connect_timeout: Duration,
+        bootstrap_timeout: Duration,
+    ) -> Result<(ParsedConfig, String)> {
+        let mut seed_errors = Vec::new();
+        let res = timeout(
+            bootstrap_timeout,
+            Self::poll_first_config(
+                client_name,
+                kv_targets,
+                state,
+                http_configs,
+                http_client,
+                err_map_component,
+                connect_timeout,
+                &mut seed_errors,
+            ),
+        )
+        .await;
+
+        match res {
+            Ok(res) => res,
+            Err(_) => {
+                let err = BootstrapError::new(true, seed_errors);
+                warn!("Failed to fetch first config: {}", user_data(&err));
+                Err(Error::new(ErrorKind::Bootstrap(err)))
+            }
+        }
+    }
+
+    fn record_seed_error(seed_errors: &mut Vec<BootstrapSeedError>, seed: String, err: Error) {
+        if let Some(existing) = seed_errors.iter_mut().find(|e| e.seed() == seed) {
+            *existing = BootstrapSeedError::new(seed, err);
+        } else {
+            seed_errors.push(BootstrapSeedError::new(seed, err));
+        }
+    }
+
+    // Loops over the seeds until one returns a config. Returns early with an authentication
+    // failure if, within a single round, every seed rejected the credentials.
+    #[allow(clippy::too_many_arguments)]
+    async fn poll_first_config<C: httpx::client::Client>(
+        client_name: String,
+        kv_targets: HashMap<String, KvTarget>,
+        state: &AgentState,
+        http_configs: HashMap<String, FirstHttpConfig>,
+        http_client: Arc<C>,
+        err_map_component: Arc<ErrMapComponent>,
+        connect_timeout: Duration,
+        seed_errors: &mut Vec<BootstrapSeedError>,
     ) -> Result<(ParsedConfig, String)> {
         loop {
+            let mut round_errors = 0;
+            let mut round_auth_errors = 0;
+            let mut on_error =
+                |seed_errors: &mut Vec<BootstrapSeedError>, seed: String, err: Error| {
+                    round_errors += 1;
+                    if is_authentication_error(&err) {
+                        round_auth_errors += 1;
+                    }
+                    Self::record_seed_error(seed_errors, seed, err);
+                };
+
             for target in kv_targets.values() {
                 let host = &target.address;
+                let seed = format!("{}:{}", host.host, host.port);
                 let err_map_component_clone = err_map_component.clone();
                 let timeout_result = timeout(
                     connect_timeout,
@@ -791,10 +855,20 @@ impl Agent {
                                     warn!("Failed to connect to endpoint: {}", user_data(&e))
                                 }
                             }
+                            on_error(seed_errors, seed, e);
                             continue;
                         }
                     },
-                    Err(_e) => continue,
+                    Err(_e) => {
+                        on_error(
+                            seed_errors,
+                            seed,
+                            Error::new_message_error(format!(
+                                "timed out connecting after {connect_timeout:?}"
+                            )),
+                        );
+                        continue;
+                    }
                 };
 
                 let raw_config = match client
@@ -804,7 +878,10 @@ impl Agent {
                     .await
                 {
                     Ok(resp) => resp.config,
-                    Err(_e) => continue,
+                    Err(e) => {
+                        on_error(seed_errors, seed, Error::new_contextual_memdx_error(e));
+                        continue;
+                    }
                 };
 
                 client.close().await?;
@@ -818,15 +895,19 @@ impl Agent {
                                 system_data(&host.host),
                                 user_data(&e)
                             );
+                            on_error(seed_errors, seed, e);
                             continue;
                         }
                     };
 
                 match ConfigParser::parse_terse_config(config, host.host.as_str()) {
                     Ok(c) => {
-                        return Ok((c, format!("{}:{}", host.host, host.port)));
+                        return Ok((c, seed));
                     }
-                    Err(_e) => continue,
+                    Err(e) => {
+                        on_error(seed_errors, seed, e);
+                        continue;
+                    }
                 };
             }
 
@@ -850,7 +931,7 @@ impl Agent {
 
                 match Self::fetch_http_config(
                     http_client.clone(),
-                    endpoint,
+                    endpoint.clone(),
                     endpoint_config.user_agent.clone(),
                     auth,
                     endpoint_config.bucket_name.clone(),
@@ -860,8 +941,21 @@ impl Agent {
                     Ok(c) => {
                         return Ok((c, host_port));
                     }
-                    Err(_e) => {}
+                    Err(e) => {
+                        debug!(
+                            "Failed to fetch config from {}: {}",
+                            system_data(&endpoint),
+                            user_data(&e)
+                        );
+                        on_error(seed_errors, endpoint, e);
+                    }
                 };
+            }
+
+            if round_errors > 0 && round_errors == round_auth_errors {
+                let err = BootstrapError::new(false, seed_errors.clone());
+                warn!("Failed to fetch first config: {}", user_data(&err));
+                return Err(Error::new(ErrorKind::Bootstrap(err)));
             }
 
             info!("Failed to fetch config from any source");

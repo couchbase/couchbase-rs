@@ -309,6 +309,10 @@ impl CouchbaseClusterBackend {
                 .orphan_reporter_handler(orphan_handler)
                 .log_redaction(opts.log_redaction.unwrap_or(false));
 
+        if let Some(bootstrap_timeout) = opts.bootstrap_timeout {
+            core_opts = core_opts.bootstrap_timeout(bootstrap_timeout);
+        }
+
         Self::merge_options(&mut core_opts, extra_opts)?;
 
         let mgr = OnDemandAgentManager::new(core_opts).await?;
@@ -455,6 +459,12 @@ impl CouchbaseClusterBackend {
                         .parse()
                         .map_err(|e| error::Error::other_failure(format!("{e:?}")))?;
                     opts.tcp_keep_alive_time = Some(Duration::from_millis(duration));
+                }
+                "bootstrap_timeout" => {
+                    let duration = v[0]
+                        .parse()
+                        .map_err(|e| error::Error::other_failure(format!("{e:?}")))?;
+                    opts.bootstrap_timeout = Duration::from_millis(duration);
                 }
                 "config_poll_interval" => {
                     let interval = v[0]
