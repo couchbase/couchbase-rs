@@ -353,7 +353,7 @@ fn test_append_and_prepend() {
             .await
             .unwrap();
 
-        assert_eq!("the answer is 42".as_bytes(), get_result.value.as_slice());
+        assert_eq!("the answer is 42".as_bytes(), &get_result.value[..]);
         assert_eq!(append_result.cas, get_result.cas);
     })
 }

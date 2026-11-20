@@ -30,6 +30,7 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Write;
+use std::sync::Arc;
 
 /// A token representing a specific mutation on a specific vBucket.
 ///
@@ -39,22 +40,27 @@ use std::fmt::Write;
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct MutationToken {
     pub(crate) token: couchbase_core::mutationtoken::MutationToken,
-    pub(crate) bucket_name: String,
+    pub(crate) bucket_name: Arc<str>,
 }
 
 impl MutationToken {
     pub(crate) fn new(
         token: couchbase_core::mutationtoken::MutationToken,
-        bucket_name: String,
+        bucket_name: Arc<str>,
     ) -> Self {
         Self { token, bucket_name }
     }
 
     #[cfg(feature = "internal")]
-    pub fn from_parts(vbid: u16, vbuuid: u64, seqno: u64, bucket_name: String) -> Self {
+    pub fn from_parts(
+        vbid: u16,
+        vbuuid: u64,
+        seqno: u64,
+        bucket_name: impl Into<Arc<str>>,
+    ) -> Self {
         Self {
             token: couchbase_core::mutationtoken::MutationToken::new(vbid, vbuuid, seqno),
-            bucket_name,
+            bucket_name: bucket_name.into(),
         }
     }
 
@@ -114,7 +120,7 @@ pub struct MutationState {
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 struct MutationStateKey {
-    bucket_name: String,
+    bucket_name: Arc<str>,
     vbid: u16,
 }
 
@@ -124,7 +130,7 @@ impl Serialize for MutationStateKey {
         S: Serializer,
     {
         let mut map = serializer.serialize_map(Some(1))?;
-        map.serialize_entry(&self.bucket_name, &self.vbid)?;
+        map.serialize_entry(&*self.bucket_name, &self.vbid)?;
         map.end()
     }
 }
@@ -187,7 +193,7 @@ impl From<MutationState> for HashMap<String, SparseScanVectors> {
     fn from(value: MutationState) -> Self {
         let mut buckets: HashMap<String, SparseScanVectors> = HashMap::default();
         for (key, token) in value.tokens {
-            let bucket = buckets.entry(key.bucket_name.clone()).or_default();
+            let bucket = buckets.entry(key.bucket_name.to_string()).or_default();
             bucket.insert(
                 key.vbid.to_string(),
                 ScanVectorEntry::new(token.seqno(), token.vbuuid().to_string()),
@@ -207,7 +213,7 @@ impl Serialize for MutationState {
         let mut buckets: HashMap<String, HashMap<String, (u64, String)>> = HashMap::new();
 
         for (key, token) in &self.tokens {
-            let bucket = buckets.entry(key.bucket_name.clone()).or_default();
+            let bucket = buckets.entry(key.bucket_name.to_string()).or_default();
             bucket.insert(
                 key.vbid.to_string(),
                 (token.seqno(), token.vbuuid().to_string()),
@@ -245,6 +251,7 @@ impl<'de> Deserialize<'de> for MutationState {
                 while let Some((bucket_name, vbuckets)) =
                     map.next_entry::<String, HashMap<String, (u64, String)>>()?
                 {
+                    let bucket_name = Arc::<str>::from(bucket_name);
                     for (vbid, (seqno, vbuuid)) in vbuckets {
                         let key = MutationStateKey {
                             bucket_name: bucket_name.clone(),
@@ -284,17 +291,18 @@ macro_rules! mutation_state {
 mod tests {
     use crate::mutation_state::MutationState;
     use crate::mutation_state::MutationToken;
+    use std::sync::Arc;
 
     #[test]
     fn serialization() {
         let mutation_state = mutation_state! {
              MutationToken::new(
                 couchbase_core::mutationtoken::MutationToken::new(1, 1234, 1),
-                "default".to_string(),
+                Arc::from("default"),
                 ),
              MutationToken::new(
                 couchbase_core::mutationtoken::MutationToken::new(25, 5678, 10),
-                "beer-sample".to_string(),
+                Arc::from("beer-sample"),
                 )
         };
 
@@ -311,11 +319,11 @@ mod tests {
         let tokens = mutation_state.tokens();
         assert!(tokens.contains(&MutationToken::new(
             couchbase_core::mutationtoken::MutationToken::new(1, 1234, 1),
-            "default".to_string(),
+            Arc::from("default"),
         )));
         assert!(tokens.contains(&MutationToken::new(
             couchbase_core::mutationtoken::MutationToken::new(25, 5678, 10),
-            "beer-sample".to_string(),
+            Arc::from("beer-sample"),
         )));
     }
 }
