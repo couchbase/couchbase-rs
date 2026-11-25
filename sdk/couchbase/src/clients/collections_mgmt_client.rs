@@ -26,6 +26,7 @@ use crate::management::collections::collection_settings::{
 use crate::options::collection_mgmt_options::*;
 use crate::results::collections_mgmt_results::{CollectionSpec, ScopeSpec};
 use crate::retry::RetryStrategy;
+use crate::timeouts::{with_timeout, Timeouts};
 use couchbase_core::features::BucketFeature;
 use std::sync::Arc;
 
@@ -181,6 +182,8 @@ pub(crate) struct CouchbaseCollectionsMgmtClient {
     bucket_name: String,
 
     default_retry_strategy: Arc<dyn RetryStrategy>,
+
+    default_timeouts: Timeouts,
 }
 
 impl CouchbaseCollectionsMgmtClient {
@@ -188,11 +191,13 @@ impl CouchbaseCollectionsMgmtClient {
         agent_provider: CouchbaseAgentProvider,
         bucket_name: String,
         default_retry_strategy: Arc<dyn RetryStrategy>,
+        default_timeouts: Timeouts,
     ) -> Self {
         Self {
             agent_provider,
             bucket_name,
             default_retry_strategy,
+            default_timeouts,
         }
     }
 
@@ -201,21 +206,25 @@ impl CouchbaseCollectionsMgmtClient {
         scope_name: impl Into<String>,
         opts: CreateScopeOptions,
     ) -> error::Result<()> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .create_scope(
-                &couchbase_core::options::management::CreateScopeOptions::new(
-                    &self.bucket_name,
-                    scope_name.into().as_str(),
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .create_scope(
+                    &couchbase_core::options::management::CreateScopeOptions::new(
+                        &self.bucket_name,
+                        scope_name.into().as_str(),
+                    )
+                    .retry_strategy(retry),
                 )
-                .retry_strategy(retry),
-            )
-            .await?;
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     pub async fn drop_scope(
@@ -223,21 +232,25 @@ impl CouchbaseCollectionsMgmtClient {
         scope_name: impl Into<String>,
         opts: DropScopeOptions,
     ) -> error::Result<()> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .delete_scope(
-                &couchbase_core::options::management::DeleteScopeOptions::new(
-                    &self.bucket_name,
-                    scope_name.into().as_str(),
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .delete_scope(
+                    &couchbase_core::options::management::DeleteScopeOptions::new(
+                        &self.bucket_name,
+                        scope_name.into().as_str(),
+                    )
+                    .retry_strategy(retry),
                 )
-                .retry_strategy(retry),
-            )
-            .await?;
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     pub async fn create_collection(
@@ -247,6 +260,8 @@ impl CouchbaseCollectionsMgmtClient {
         settings: CreateCollectionSettings,
         opts: CreateCollectionOptions,
     ) -> error::Result<()> {
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
         let agent = self.agent_provider.get_agent().await;
         let agent = CouchbaseAgentProvider::upgrade_agent(agent)?;
 
@@ -287,6 +302,8 @@ impl CouchbaseCollectionsMgmtClient {
         agent.create_collection(&core_opts).await?;
 
         Ok(())
+        })
+        .await
     }
 
     pub async fn update_collection(
@@ -296,6 +313,8 @@ impl CouchbaseCollectionsMgmtClient {
         settings: UpdateCollectionSettings,
         opts: UpdateCollectionOptions,
     ) -> error::Result<()> {
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
         let agent = self.agent_provider.get_agent().await;
         let agent = CouchbaseAgentProvider::upgrade_agent(agent)?;
 
@@ -335,6 +354,8 @@ impl CouchbaseCollectionsMgmtClient {
         agent.update_collection(&core_opts).await?;
 
         Ok(())
+        })
+        .await
     }
 
     pub async fn drop_collection(
@@ -343,60 +364,68 @@ impl CouchbaseCollectionsMgmtClient {
         collection_name: impl Into<String>,
         opts: DropCollectionOptions,
     ) -> error::Result<()> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .delete_collection(
-                &couchbase_core::options::management::DeleteCollectionOptions::new(
-                    &self.bucket_name,
-                    scope_name.into().as_str(),
-                    collection_name.into().as_str(),
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .delete_collection(
+                    &couchbase_core::options::management::DeleteCollectionOptions::new(
+                        &self.bucket_name,
+                        scope_name.into().as_str(),
+                        collection_name.into().as_str(),
+                    )
+                    .retry_strategy(retry),
                 )
-                .retry_strategy(retry),
-            )
-            .await?;
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     pub async fn get_all_scopes(&self, opts: GetAllScopesOptions) -> error::Result<Vec<ScopeSpec>> {
-        let agent = self.agent_provider.get_agent().await;
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
-        let manifest = CouchbaseAgentProvider::upgrade_agent(agent)?
-            .get_collection_manifest(
-                &couchbase_core::options::management::GetCollectionManifestOptions::new(
-                    &self.bucket_name,
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, false, async move {
+            let agent = self.agent_provider.get_agent().await;
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
+            let manifest = CouchbaseAgentProvider::upgrade_agent(agent)?
+                .get_collection_manifest(
+                    &couchbase_core::options::management::GetCollectionManifestOptions::new(
+                        &self.bucket_name,
+                    )
+                    .retry_strategy(retry),
                 )
-                .retry_strategy(retry),
-            )
-            .await?;
+                .await?;
 
-        let mut scopes = vec![];
-        for scope in manifest.scopes {
-            let mut collections = vec![];
-            for collection in scope.collections {
-                collections.push(CollectionSpec {
-                    name: collection.name,
-                    scope_name: scope.name.clone(),
-                    max_expiry: collection
-                        .max_ttl
-                        .map(MaxExpiryValue::from)
-                        .unwrap_or(MaxExpiryValue::InheritFromBucket),
-                    history: collection.history.unwrap_or(false),
-                })
+            let mut scopes = vec![];
+            for scope in manifest.scopes {
+                let mut collections = vec![];
+                for collection in scope.collections {
+                    collections.push(CollectionSpec {
+                        name: collection.name,
+                        scope_name: scope.name.clone(),
+                        max_expiry: collection
+                            .max_ttl
+                            .map(MaxExpiryValue::from)
+                            .unwrap_or(MaxExpiryValue::InheritFromBucket),
+                        history: collection.history.unwrap_or(false),
+                    })
+                }
+
+                scopes.push(ScopeSpec {
+                    name: scope.name,
+                    collections,
+                });
             }
 
-            scopes.push(ScopeSpec {
-                name: scope.name,
-                collections,
-            });
-        }
-
-        Ok(scopes)
+            Ok(scopes)
+        })
+        .await
     }
 
     pub fn bucket_name(&self) -> &str {

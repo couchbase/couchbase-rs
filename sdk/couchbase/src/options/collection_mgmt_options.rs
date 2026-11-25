@@ -23,6 +23,7 @@
 
 use crate::retry::RetryStrategy;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Options for listing all scopes in a bucket.
 #[derive(Default, Debug, Clone)]
@@ -30,6 +31,8 @@ use std::sync::Arc;
 pub struct GetAllScopesOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetAllScopesOptions {
@@ -42,6 +45,12 @@ impl GetAllScopesOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for creating a scope.
@@ -50,6 +59,8 @@ impl GetAllScopesOptions {
 pub struct CreateScopeOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl CreateScopeOptions {
@@ -62,6 +73,12 @@ impl CreateScopeOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for dropping a scope.
@@ -70,6 +87,8 @@ impl CreateScopeOptions {
 pub struct DropScopeOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl DropScopeOptions {
@@ -82,6 +101,12 @@ impl DropScopeOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for creating a collection.
@@ -90,6 +115,8 @@ impl DropScopeOptions {
 pub struct CreateCollectionOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl CreateCollectionOptions {
@@ -102,6 +129,12 @@ impl CreateCollectionOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for updating a collection's settings.
@@ -110,6 +143,8 @@ impl CreateCollectionOptions {
 pub struct UpdateCollectionOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl UpdateCollectionOptions {
@@ -122,6 +157,12 @@ impl UpdateCollectionOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for dropping a collection.
@@ -130,6 +171,8 @@ impl UpdateCollectionOptions {
 pub struct DropCollectionOptions {
     /// Retry strategy for the operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl DropCollectionOptions {
@@ -140,6 +183,12 @@ impl DropCollectionOptions {
     /// Sets the retry strategy for the operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }

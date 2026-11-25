@@ -19,6 +19,7 @@
 //! Result types for Full-Text Search operations.
 
 use crate::error;
+use crate::timeouts::OperationDeadline;
 use chrono::{DateTime, FixedOffset};
 use couchbase_core::results::search::SearchResultStream;
 use couchbase_core::searchx;
@@ -66,6 +67,7 @@ use std::time::Duration;
 /// ```
 pub struct SearchResult {
     wrapped: SearchResultStream,
+    deadline: Option<OperationDeadline>,
 }
 
 /// Performance metrics for a search query.
@@ -358,22 +360,46 @@ impl From<ResultHit> for SearchRow {
 
 impl From<SearchResultStream> for SearchResult {
     fn from(wrapped: SearchResultStream) -> Self {
-        Self { wrapped }
+        Self {
+            wrapped,
+            deadline: None,
+        }
+    }
+}
+
+impl SearchResult {
+    pub(crate) fn with_deadline(wrapped: SearchResultStream, deadline: OperationDeadline) -> Self {
+        Self {
+            wrapped,
+            deadline: Some(deadline),
+        }
     }
 }
 
 struct SearchRows<'a> {
     wrapped: &'a mut SearchResultStream,
+    deadline: Option<&'a mut OperationDeadline>,
 }
 
 impl Stream for SearchRows<'_> {
     type Item = error::Result<SearchRow>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if let Some(deadline) = self.deadline.as_mut() {
+            if let Poll::Ready(res) = deadline.poll(cx) {
+                return Poll::Ready(res.err().map(Err));
+            }
+        }
+
         let row = match self.wrapped.poll_next_unpin(cx) {
             Poll::Ready(Some(Ok(row))) => row,
             Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(e.into()))),
-            Poll::Ready(None) => return Poll::Ready(None),
+            Poll::Ready(None) => {
+                if let Some(deadline) = self.deadline.as_mut() {
+                    deadline.disarm();
+                }
+                return Poll::Ready(None);
+            }
             Poll::Pending => return Poll::Pending,
         };
 
@@ -396,6 +422,7 @@ impl SearchResult {
     pub fn rows(&mut self) -> impl Stream<Item = error::Result<SearchRow>> + '_ {
         SearchRows {
             wrapped: &mut self.wrapped,
+            deadline: self.deadline.as_mut(),
         }
     }
 

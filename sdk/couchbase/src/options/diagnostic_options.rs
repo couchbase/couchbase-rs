@@ -109,6 +109,8 @@ pub struct WaitUntilReadyOptions {
     pub service_types: Option<Vec<ServiceType>>,
     /// Override the default retry strategy.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for waiting until ready. Without one, waits until the desired state is reached.
+    pub timeout: Option<std::time::Duration>,
 }
 
 impl Default for WaitUntilReadyOptions {
@@ -124,12 +126,20 @@ impl WaitUntilReadyOptions {
             desired_state: None,
             service_types: None,
             retry_strategy: None,
+            timeout: None,
         }
     }
 
     /// Sets the desired cluster state to wait for.
     pub fn desired_state(mut self, state: ClusterState) -> Self {
         self.desired_state = Some(state);
+        self
+    }
+
+    /// Sets the timeout for waiting until ready. When it elapses, fails with
+    /// [`ErrorKind::UnambiguousTimeout`](crate::error::ErrorKind::UnambiguousTimeout).
+    pub fn timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 

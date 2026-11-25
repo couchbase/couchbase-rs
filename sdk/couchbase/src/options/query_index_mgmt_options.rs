@@ -20,6 +20,7 @@
 
 use crate::retry::RetryStrategy;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Options for listing all query indexes.
 #[derive(Default, Debug, Clone)]
@@ -27,6 +28,8 @@ use std::sync::Arc;
 pub struct GetAllQueryIndexesOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl GetAllQueryIndexesOptions {
@@ -38,6 +41,12 @@ impl GetAllQueryIndexesOptions {
     /// Sets the retry strategy for the operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }
@@ -60,6 +69,8 @@ pub struct CreateQueryIndexOptions {
     pub deferred: Option<bool>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl CreateQueryIndexOptions {
@@ -70,6 +81,7 @@ impl CreateQueryIndexOptions {
             num_replicas: None,
             deferred: None,
             retry_strategy: None,
+            timeout: None,
         }
     }
 
@@ -96,6 +108,12 @@ impl CreateQueryIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for creating a primary query index.
@@ -119,6 +137,8 @@ pub struct CreatePrimaryQueryIndexOptions {
     pub deferred: Option<bool>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl CreatePrimaryQueryIndexOptions {
@@ -130,6 +150,7 @@ impl CreatePrimaryQueryIndexOptions {
             num_replicas: None,
             deferred: None,
             retry_strategy: None,
+            timeout: None,
         }
     }
 
@@ -162,6 +183,12 @@ impl CreatePrimaryQueryIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for dropping a secondary query index.
@@ -174,6 +201,8 @@ pub struct DropQueryIndexOptions {
     pub ignore_if_not_exists: Option<bool>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl DropQueryIndexOptions {
@@ -182,6 +211,7 @@ impl DropQueryIndexOptions {
         Self {
             ignore_if_not_exists: None,
             retry_strategy: None,
+            timeout: None,
         }
     }
 
@@ -194,6 +224,12 @@ impl DropQueryIndexOptions {
     /// Sets the retry strategy for the operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }
@@ -211,6 +247,8 @@ pub struct DropPrimaryQueryIndexOptions {
     pub ignore_if_not_exists: Option<bool>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl DropPrimaryQueryIndexOptions {
@@ -220,6 +258,7 @@ impl DropPrimaryQueryIndexOptions {
             index_name: None,
             ignore_if_not_exists: None,
             retry_strategy: None,
+            timeout: None,
         }
     }
 
@@ -240,6 +279,12 @@ impl DropPrimaryQueryIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for watching query indexes until they come online.
@@ -252,6 +297,9 @@ pub struct WatchQueryIndexOptions {
     pub watch_primary: Option<bool>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for waiting until the indexes are online, including retries. Without one,
+    /// waits until they are online.
+    pub timeout: Option<Duration>,
 }
 
 impl WatchQueryIndexOptions {
@@ -260,6 +308,7 @@ impl WatchQueryIndexOptions {
         Self {
             watch_primary: None,
             retry_strategy: None,
+            timeout: None,
         }
     }
 
@@ -274,6 +323,12 @@ impl WatchQueryIndexOptions {
         self.retry_strategy = Some(retry_strategy);
         self
     }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 /// Options for building all deferred query indexes.
@@ -282,6 +337,8 @@ impl WatchQueryIndexOptions {
 pub struct BuildQueryIndexOptions {
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Defaults to [`TimeoutOptions::management_timeout`](crate::options::cluster_options::TimeoutOptions::management_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl BuildQueryIndexOptions {
@@ -289,12 +346,19 @@ impl BuildQueryIndexOptions {
     pub fn new() -> Self {
         Self {
             retry_strategy: None,
+            timeout: None,
         }
     }
 
     /// Sets the retry strategy for the operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }

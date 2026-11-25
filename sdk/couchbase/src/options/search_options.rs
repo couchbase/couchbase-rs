@@ -163,6 +163,9 @@ pub struct SearchOptions {
     pub server_timeout: Option<Duration>,
     /// Override the default retry strategy for this operation.
     pub retry_strategy: Option<Arc<dyn RetryStrategy>>,
+    /// Timeout for this operation, including retries. Covers the consumption of the result rows. Defaults to
+    /// [`TimeoutOptions::search_timeout`](crate::options::cluster_options::TimeoutOptions::search_timeout).
+    pub timeout: Option<Duration>,
 }
 
 impl SearchOptions {
@@ -282,6 +285,12 @@ impl SearchOptions {
     /// Sets a custom retry strategy for this operation.
     pub fn retry_strategy(mut self, retry_strategy: Arc<dyn RetryStrategy>) -> Self {
         self.retry_strategy = Some(retry_strategy);
+        self
+    }
+
+    /// Sets the timeout for this operation, including retries.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }

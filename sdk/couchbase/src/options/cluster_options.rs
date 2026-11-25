@@ -85,6 +85,8 @@ pub struct ClusterOptions {
     pub dns_options: Option<DnsOptions>,
     /// Configuration for the orphan response reporter.
     pub orphan_reporter_options: OrphanReporterOptions,
+    /// Default timeouts, for operations whose options don't set one.
+    pub timeout_options: TimeoutOptions,
     /// The default retry strategy for all operations. Individual operations can override
     /// this with their own per-operation retry strategy option.
     pub default_retry_strategy: Option<Arc<dyn crate::retry::RetryStrategy>>,
@@ -104,6 +106,7 @@ impl Debug for ClusterOptions {
             .field("http_options", &self.http_options)
             .field("kv_options", &self.kv_options)
             .field("orphan_reporter_options", &self.orphan_reporter_options)
+            .field("timeout_options", &self.timeout_options)
             .field("log_redaction", &self.log_redaction)
             .finish()
     }
@@ -123,6 +126,7 @@ impl ClusterOptions {
             #[cfg(feature = "dns-srv")]
             dns_options: None,
             orphan_reporter_options: OrphanReporterOptions::new(),
+            timeout_options: TimeoutOptions::new(),
             default_retry_strategy: None,
             log_redaction: None,
         }
@@ -177,6 +181,12 @@ impl ClusterOptions {
         orphan_reporter_options: OrphanReporterOptions,
     ) -> Self {
         self.orphan_reporter_options = orphan_reporter_options;
+        self
+    }
+
+    /// Sets the default timeouts, for operations whose options don't set one.
+    pub fn timeout_options(mut self, timeout_options: TimeoutOptions) -> Self {
+        self.timeout_options = timeout_options;
         self
     }
 
@@ -335,6 +345,79 @@ impl Display for PollerOptions {
             f,
             "{{ config_poll_interval: {:?} }}",
             self.config_poll_interval
+        )
+    }
+}
+
+/// Default timeouts, applied to operations whose options don't set a `timeout`.
+///
+/// A timeout covers the whole operation, including retries and, for query and search, the
+/// consumption of the result rows. When it elapses, the operation fails with
+/// [`ErrorKind::UnambiguousTimeout`](crate::error::ErrorKind::UnambiguousTimeout) if it was
+/// read-only, or [`ErrorKind::AmbiguousTimeout`](crate::error::ErrorKind::AmbiguousTimeout) if it
+/// may have been applied on the server.
+#[derive(Default, Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct TimeoutOptions {
+    /// Timeout for key-value operations. Defaults to 2.5 seconds.
+    pub kv_timeout: Option<Duration>,
+    /// Timeout for key-value mutations with a durability level. Defaults to 10 seconds.
+    pub kv_durable_timeout: Option<Duration>,
+    /// Timeout for queries. Defaults to 75 seconds.
+    pub query_timeout: Option<Duration>,
+    /// Timeout for search queries. Defaults to 75 seconds.
+    pub search_timeout: Option<Duration>,
+    /// Timeout for management operations. Defaults to 75 seconds.
+    pub management_timeout: Option<Duration>,
+}
+
+impl TimeoutOptions {
+    /// Creates a new `TimeoutOptions` with default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the timeout for key-value operations.
+    pub fn kv_timeout(mut self, timeout: Duration) -> Self {
+        self.kv_timeout = Some(timeout);
+        self
+    }
+
+    /// Sets the timeout for key-value mutations with a durability level.
+    pub fn kv_durable_timeout(mut self, timeout: Duration) -> Self {
+        self.kv_durable_timeout = Some(timeout);
+        self
+    }
+
+    /// Sets the timeout for queries.
+    pub fn query_timeout(mut self, timeout: Duration) -> Self {
+        self.query_timeout = Some(timeout);
+        self
+    }
+
+    /// Sets the timeout for search queries.
+    pub fn search_timeout(mut self, timeout: Duration) -> Self {
+        self.search_timeout = Some(timeout);
+        self
+    }
+
+    /// Sets the timeout for management operations.
+    pub fn management_timeout(mut self, timeout: Duration) -> Self {
+        self.management_timeout = Some(timeout);
+        self
+    }
+}
+
+impl Display for TimeoutOptions {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(
+            f,
+            "{{ kv_timeout: {:?}, kv_durable_timeout: {:?}, query_timeout: {:?}, search_timeout: {:?}, management_timeout: {:?} }}",
+            self.kv_timeout,
+            self.kv_durable_timeout,
+            self.query_timeout,
+            self.search_timeout,
+            self.management_timeout
         )
     }
 }
@@ -851,7 +934,7 @@ impl Display for ClusterOptions {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(
             f,
-            "{{ authenticator: {}, compression_mode: {:?}, tls_options: {}, tcp_keep_alive_time: {:?}, poller_options: {}, http_options: {}, kv_options: {}, orphan_reporter_options: {}, log_redaction: {:?} }}",
+            "{{ authenticator: {}, compression_mode: {:?}, tls_options: {}, tcp_keep_alive_time: {:?}, poller_options: {}, http_options: {}, kv_options: {}, orphan_reporter_options: {}, timeout_options: {}, log_redaction: {:?} }}",
             self.authenticator,
             self.compression_mode,
             if let Some(tls) = &self.tls_options {tls.to_string()} else {"none".to_string()},
@@ -860,6 +943,7 @@ impl Display for ClusterOptions {
             self.http_options,
             self.kv_options,
             self.orphan_reporter_options,
+            self.timeout_options,
             self.log_redaction
         )
     }

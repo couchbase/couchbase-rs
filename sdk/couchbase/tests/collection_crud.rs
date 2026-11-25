@@ -889,13 +889,18 @@ fn test_retry_locked_until_cancel() {
             .await
             .unwrap();
 
-        let res = timeout_at(
-            Instant::now().add(Duration::from_millis(2500)),
-            collection.deref().upsert(&key, "test", None),
-        )
-        .await;
+        // The upsert retries on the locked document until its timeout elapses.
+        let err = collection
+            .deref()
+            .upsert(
+                &key,
+                "test",
+                UpsertOptions::new().timeout(Duration::from_millis(2500)),
+            )
+            .await
+            .unwrap_err();
 
-        assert!(res.is_err());
+        assert_eq!(&ErrorKind::AmbiguousTimeout, err.kind());
     })
 }
 

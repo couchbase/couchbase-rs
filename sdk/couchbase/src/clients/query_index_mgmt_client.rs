@@ -26,6 +26,7 @@ use crate::options::query_index_mgmt_options::{
 };
 use crate::results::query_index_mgmt_results::QueryIndex;
 use crate::retry::RetryStrategy;
+use crate::timeouts::{with_optional_timeout, with_timeout, Timeouts};
 use crate::tracing::Keyspace;
 use std::sync::Arc;
 
@@ -240,6 +241,7 @@ pub(crate) struct CouchbaseQueryIndexMgmtClient {
     agent_provider: CouchbaseAgentProvider,
     keyspace: QueryIndexKeyspace,
     default_retry_strategy: Arc<dyn RetryStrategy>,
+    default_timeouts: Timeouts,
 }
 
 impl CouchbaseQueryIndexMgmtClient {
@@ -247,11 +249,13 @@ impl CouchbaseQueryIndexMgmtClient {
         agent_provider: CouchbaseAgentProvider,
         keyspace: QueryIndexKeyspace,
         default_retry_strategy: Arc<dyn RetryStrategy>,
+        default_timeouts: Timeouts,
     ) -> Self {
         Self {
             agent_provider,
             keyspace,
             default_retry_strategy,
+            default_timeouts,
         }
     }
 
@@ -259,24 +263,32 @@ impl CouchbaseQueryIndexMgmtClient {
         &self,
         opts: Option<GetAllQueryIndexesOptions>,
     ) -> error::Result<Vec<QueryIndex>> {
-        let opts = opts.unwrap_or_default();
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
+        let timeout = opts
+            .as_ref()
+            .and_then(|o| o.timeout)
+            .unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, false, async move {
+            let opts = opts.unwrap_or_default();
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
 
-        let mut get_indexes_opts =
-            couchbase_core::options::query::GetAllIndexesOptions::new(&self.keyspace.bucket_name)
-                .scope_name(&self.keyspace.scope_name)
-                .collection_name(&self.keyspace.collection_name);
-        get_indexes_opts = get_indexes_opts.retry_strategy(retry);
+            let mut get_indexes_opts = couchbase_core::options::query::GetAllIndexesOptions::new(
+                &self.keyspace.bucket_name,
+            )
+            .scope_name(&self.keyspace.scope_name)
+            .collection_name(&self.keyspace.collection_name);
+            get_indexes_opts = get_indexes_opts.retry_strategy(retry);
 
-        let agent = self.agent_provider.get_agent().await;
+            let agent = self.agent_provider.get_agent().await;
 
-        let indexes = CouchbaseAgentProvider::upgrade_agent(agent)?
-            .get_all_indexes(&get_indexes_opts)
-            .await?;
+            let indexes = CouchbaseAgentProvider::upgrade_agent(agent)?
+                .get_all_indexes(&get_indexes_opts)
+                .await?;
 
-        Ok(indexes.into_iter().map(QueryIndex::from).collect())
+            Ok(indexes.into_iter().map(QueryIndex::from).collect())
+        })
+        .await
     }
 
     async fn create_index(
@@ -285,77 +297,92 @@ impl CouchbaseQueryIndexMgmtClient {
         fields: Vec<String>,
         opts: Option<CreateQueryIndexOptions>,
     ) -> error::Result<()> {
-        let opts = opts.unwrap_or_default();
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
+        let timeout = opts
+            .as_ref()
+            .and_then(|o| o.timeout)
+            .unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let opts = opts.unwrap_or_default();
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
 
-        let index_name = index_name.into();
-        let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
+            let index_name = index_name.into();
+            let fields: Vec<&str> = fields.iter().map(String::as_str).collect();
 
-        let mut create_index_opts = couchbase_core::options::query::CreateIndexOptions::new(
-            &self.keyspace.bucket_name,
-            &index_name,
-            &fields,
-        )
-        .scope_name(&self.keyspace.scope_name)
-        .collection_name(&self.keyspace.collection_name);
+            let mut create_index_opts = couchbase_core::options::query::CreateIndexOptions::new(
+                &self.keyspace.bucket_name,
+                &index_name,
+                &fields,
+            )
+            .scope_name(&self.keyspace.scope_name)
+            .collection_name(&self.keyspace.collection_name);
 
-        if let Some(deferred) = opts.deferred {
-            create_index_opts = create_index_opts.deferred(deferred);
-        }
-        if let Some(ignore_if_exists) = opts.ignore_if_exists {
-            create_index_opts = create_index_opts.ignore_if_exists(ignore_if_exists);
-        }
-        if let Some(num_replicas) = opts.num_replicas {
-            create_index_opts = create_index_opts.num_replicas(num_replicas);
-        }
-        create_index_opts = create_index_opts.retry_strategy(retry);
+            if let Some(deferred) = opts.deferred {
+                create_index_opts = create_index_opts.deferred(deferred);
+            }
+            if let Some(ignore_if_exists) = opts.ignore_if_exists {
+                create_index_opts = create_index_opts.ignore_if_exists(ignore_if_exists);
+            }
+            if let Some(num_replicas) = opts.num_replicas {
+                create_index_opts = create_index_opts.num_replicas(num_replicas);
+            }
+            create_index_opts = create_index_opts.retry_strategy(retry);
 
-        let agent = self.agent_provider.get_agent().await;
+            let agent = self.agent_provider.get_agent().await;
 
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .create_index(&create_index_opts)
-            .await?;
-        Ok(())
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .create_index(&create_index_opts)
+                .await?;
+            Ok(())
+        })
+        .await
     }
 
     async fn create_primary_index(
         &self,
         opts: Option<CreatePrimaryQueryIndexOptions>,
     ) -> error::Result<()> {
-        let opts = opts.unwrap_or_default();
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
+        let timeout = opts
+            .as_ref()
+            .and_then(|o| o.timeout)
+            .unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let opts = opts.unwrap_or_default();
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
 
-        let mut create_index_opts = couchbase_core::options::query::CreatePrimaryIndexOptions::new(
-            &self.keyspace.bucket_name,
-        )
-        .scope_name(&self.keyspace.scope_name)
-        .collection_name(&self.keyspace.collection_name);
+            let mut create_index_opts =
+                couchbase_core::options::query::CreatePrimaryIndexOptions::new(
+                    &self.keyspace.bucket_name,
+                )
+                .scope_name(&self.keyspace.scope_name)
+                .collection_name(&self.keyspace.collection_name);
 
-        if let Some(deferred) = opts.deferred {
-            create_index_opts = create_index_opts.deferred(deferred);
-        }
-        if let Some(ignore_if_exists) = opts.ignore_if_exists {
-            create_index_opts = create_index_opts.ignore_if_exists(ignore_if_exists);
-        }
-        if let Some(num_replicas) = opts.num_replicas {
-            create_index_opts = create_index_opts.num_replicas(num_replicas);
-        }
-        if let Some(index_name) = opts.index_name.as_deref() {
-            create_index_opts = create_index_opts.index_name(index_name);
-        }
-        create_index_opts = create_index_opts.retry_strategy(retry);
+            if let Some(deferred) = opts.deferred {
+                create_index_opts = create_index_opts.deferred(deferred);
+            }
+            if let Some(ignore_if_exists) = opts.ignore_if_exists {
+                create_index_opts = create_index_opts.ignore_if_exists(ignore_if_exists);
+            }
+            if let Some(num_replicas) = opts.num_replicas {
+                create_index_opts = create_index_opts.num_replicas(num_replicas);
+            }
+            if let Some(index_name) = opts.index_name.as_deref() {
+                create_index_opts = create_index_opts.index_name(index_name);
+            }
+            create_index_opts = create_index_opts.retry_strategy(retry);
 
-        let agent = self.agent_provider.get_agent().await;
+            let agent = self.agent_provider.get_agent().await;
 
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .create_primary_index(&create_index_opts)
-            .await?;
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .create_primary_index(&create_index_opts)
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     async fn drop_index(
@@ -363,62 +390,76 @@ impl CouchbaseQueryIndexMgmtClient {
         index_name: String,
         opts: Option<DropQueryIndexOptions>,
     ) -> error::Result<()> {
-        let opts = opts.unwrap_or_default();
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
+        let timeout = opts
+            .as_ref()
+            .and_then(|o| o.timeout)
+            .unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let opts = opts.unwrap_or_default();
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
 
-        let mut drop_index_opts = couchbase_core::options::query::DropIndexOptions::new(
-            &self.keyspace.bucket_name,
-            index_name.as_str(),
-        )
-        .scope_name(&self.keyspace.scope_name)
-        .collection_name(&self.keyspace.collection_name);
+            let mut drop_index_opts = couchbase_core::options::query::DropIndexOptions::new(
+                &self.keyspace.bucket_name,
+                index_name.as_str(),
+            )
+            .scope_name(&self.keyspace.scope_name)
+            .collection_name(&self.keyspace.collection_name);
 
-        if let Some(ignore) = opts.ignore_if_not_exists {
-            drop_index_opts = drop_index_opts.ignore_if_not_exists(ignore);
-        }
-        drop_index_opts = drop_index_opts.retry_strategy(retry);
+            if let Some(ignore) = opts.ignore_if_not_exists {
+                drop_index_opts = drop_index_opts.ignore_if_not_exists(ignore);
+            }
+            drop_index_opts = drop_index_opts.retry_strategy(retry);
 
-        let agent = self.agent_provider.get_agent().await;
+            let agent = self.agent_provider.get_agent().await;
 
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .drop_index(&drop_index_opts)
-            .await?;
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .drop_index(&drop_index_opts)
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     async fn drop_primary_index(
         &self,
         opts: Option<DropPrimaryQueryIndexOptions>,
     ) -> error::Result<()> {
-        let opts = opts.unwrap_or_default();
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
+        let timeout = opts
+            .as_ref()
+            .and_then(|o| o.timeout)
+            .unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let opts = opts.unwrap_or_default();
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
 
-        let mut drop_index_opts = couchbase_core::options::query::DropPrimaryIndexOptions::new(
-            &self.keyspace.bucket_name,
-        )
-        .scope_name(&self.keyspace.scope_name)
-        .collection_name(&self.keyspace.collection_name);
+            let mut drop_index_opts = couchbase_core::options::query::DropPrimaryIndexOptions::new(
+                &self.keyspace.bucket_name,
+            )
+            .scope_name(&self.keyspace.scope_name)
+            .collection_name(&self.keyspace.collection_name);
 
-        if let Some(ignore) = opts.ignore_if_not_exists {
-            drop_index_opts = drop_index_opts.ignore_if_not_exists(ignore);
-        }
-        if let Some(index_name) = opts.index_name.as_deref() {
-            drop_index_opts = drop_index_opts.index_name(index_name);
-        }
-        drop_index_opts = drop_index_opts.retry_strategy(retry);
+            if let Some(ignore) = opts.ignore_if_not_exists {
+                drop_index_opts = drop_index_opts.ignore_if_not_exists(ignore);
+            }
+            if let Some(index_name) = opts.index_name.as_deref() {
+                drop_index_opts = drop_index_opts.index_name(index_name);
+            }
+            drop_index_opts = drop_index_opts.retry_strategy(retry);
 
-        let agent = self.agent_provider.get_agent().await;
+            let agent = self.agent_provider.get_agent().await;
 
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .drop_primary_index(&drop_index_opts)
-            .await?;
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .drop_primary_index(&drop_index_opts)
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     async fn watch_indexes(
@@ -427,6 +468,19 @@ impl CouchbaseQueryIndexMgmtClient {
         opts: Option<WatchQueryIndexOptions>,
     ) -> error::Result<()> {
         let opts = opts.unwrap_or_default();
+        with_optional_timeout(
+            opts.timeout,
+            false,
+            self.watch_indexes_inner(index_names, opts),
+        )
+        .await
+    }
+
+    async fn watch_indexes_inner(
+        &self,
+        index_names: Vec<String>,
+        opts: WatchQueryIndexOptions,
+    ) -> error::Result<()> {
         let retry = opts
             .retry_strategy
             .unwrap_or_else(|| self.default_retry_strategy.clone());
@@ -458,27 +512,34 @@ impl CouchbaseQueryIndexMgmtClient {
         &self,
         opts: Option<BuildQueryIndexOptions>,
     ) -> error::Result<()> {
-        let opts = opts.unwrap_or_default();
-        let retry = opts
-            .retry_strategy
-            .unwrap_or_else(|| self.default_retry_strategy.clone());
+        let timeout = opts
+            .as_ref()
+            .and_then(|o| o.timeout)
+            .unwrap_or(self.default_timeouts.management);
+        with_timeout(timeout, true, async move {
+            let opts = opts.unwrap_or_default();
+            let retry = opts
+                .retry_strategy
+                .unwrap_or_else(|| self.default_retry_strategy.clone());
 
-        let mut build_indexes_opts =
-            couchbase_core::options::query::BuildDeferredIndexesOptions::new(
-                &self.keyspace.bucket_name,
-            )
-            .scope_name(&self.keyspace.scope_name)
-            .collection_name(&self.keyspace.collection_name);
+            let mut build_indexes_opts =
+                couchbase_core::options::query::BuildDeferredIndexesOptions::new(
+                    &self.keyspace.bucket_name,
+                )
+                .scope_name(&self.keyspace.scope_name)
+                .collection_name(&self.keyspace.collection_name);
 
-        build_indexes_opts = build_indexes_opts.retry_strategy(retry);
+            build_indexes_opts = build_indexes_opts.retry_strategy(retry);
 
-        let agent = self.agent_provider.get_agent().await;
+            let agent = self.agent_provider.get_agent().await;
 
-        CouchbaseAgentProvider::upgrade_agent(agent)?
-            .build_deferred_indexes(&build_indexes_opts)
-            .await?;
+            CouchbaseAgentProvider::upgrade_agent(agent)?
+                .build_deferred_indexes(&build_indexes_opts)
+                .await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     fn tracing_client(&self) -> CouchbaseTracingClient {

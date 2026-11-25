@@ -24,6 +24,7 @@ use crate::results::search_results::SearchResult;
 use crate::retry::RetryStrategy;
 use crate::search::request::SearchRequest;
 use crate::search::scoring::Scoring;
+use crate::timeouts::{OperationDeadline, Timeouts};
 use couchbase_core::searchx;
 use couchbase_core::searchx::query_options::{
     Consistency, ConsistencyLevel, ConsistencyVectors, Control, KnnOperator, KnnQuery, Params,
@@ -80,17 +81,20 @@ pub(crate) struct CouchbaseSearchClient {
     agent_provider: CouchbaseAgentProvider,
     keyspace: Option<SearchKeyspace>,
     default_retry_strategy: Arc<dyn RetryStrategy>,
+    default_timeouts: Timeouts,
 }
 
 impl CouchbaseSearchClient {
     pub fn new(
         agent_provider: CouchbaseAgentProvider,
         default_retry_strategy: Arc<dyn RetryStrategy>,
+        default_timeouts: Timeouts,
     ) -> Self {
         Self {
             agent_provider,
             keyspace: None,
             default_retry_strategy,
+            default_timeouts,
         }
     }
 
@@ -98,11 +102,13 @@ impl CouchbaseSearchClient {
         agent_provider: CouchbaseAgentProvider,
         keyspace: SearchKeyspace,
         default_retry_strategy: Arc<dyn RetryStrategy>,
+        default_timeouts: Timeouts,
     ) -> Self {
         Self {
             agent_provider,
             keyspace: Some(keyspace),
             default_retry_strategy,
+            default_timeouts,
         }
     }
 
@@ -114,6 +120,9 @@ impl CouchbaseSearchClient {
         opts: Option<SearchOptions>,
     ) -> error::Result<SearchResult> {
         let opts = opts.unwrap_or_default();
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.search);
+        let deadline = OperationDeadline::new(timeout, false);
+        let server_timeout = opts.server_timeout.unwrap_or(timeout);
 
         if opts.disable_scoring.is_some() && opts.scoring.is_some() {
             return Err(error::Error::invalid_argument(
@@ -189,15 +198,11 @@ impl CouchbaseSearchClient {
                 None
             };
 
-            if scan_consistency.is_some() || opts.server_timeout.is_some() {
-                Some(
-                    Control::default()
-                        .consistency(scan_consistency)
-                        .timeout(opts.server_timeout.map(|t| t.as_millis() as u64)),
-                )
-            } else {
-                None
-            }
+            Some(
+                Control::default()
+                    .consistency(scan_consistency)
+                    .timeout(Some(server_timeout.as_millis() as u64)),
+            )
         };
 
         let (knn, knn_operator) = if let Some(vector_search) = request.vector_search {
@@ -270,12 +275,16 @@ impl CouchbaseSearchClient {
                     .unwrap_or_else(|| self.default_retry_strategy.clone()),
             );
 
-        let agent = self.agent_provider.get_agent().await;
-        Ok(SearchResult::from(
-            CouchbaseAgentProvider::upgrade_agent(agent)?
-                .search(core_opts)
-                .await?,
-        ))
+        let stream = deadline
+            .run(async {
+                let agent = self.agent_provider.get_agent().await;
+                Ok(CouchbaseAgentProvider::upgrade_agent(agent)?
+                    .search(core_opts)
+                    .await?)
+            })
+            .await?;
+
+        Ok(SearchResult::with_deadline(stream, deadline))
     }
 
     pub fn tracing_client(&self) -> CouchbaseTracingClient {

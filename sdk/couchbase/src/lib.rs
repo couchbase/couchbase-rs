@@ -278,5 +278,6 @@ pub mod service_type;
 pub mod subdoc;
 #[cfg(feature = "threshold-logging-tracer")]
 pub mod threshold_logging_tracer;
+mod timeouts;
 mod tracing;
 pub mod transcoding;

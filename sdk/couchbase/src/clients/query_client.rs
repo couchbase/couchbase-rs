@@ -21,6 +21,7 @@ use crate::error;
 use crate::options::query_options::{QueryOptions, ScanConsistency};
 use crate::results::query_results::QueryResult;
 use crate::retry::RetryStrategy;
+use crate::timeouts::{OperationDeadline, Timeouts};
 use couchbase_core::options::query;
 use couchbase_core::queryx;
 use std::sync::Arc;
@@ -76,17 +77,20 @@ pub(crate) struct CouchbaseQueryClient {
     agent_provider: CouchbaseAgentProvider,
     keyspace: Option<QueryKeyspace>,
     default_retry_strategy: Arc<dyn RetryStrategy>,
+    default_timeouts: Timeouts,
 }
 
 impl CouchbaseQueryClient {
     pub fn new(
         agent_provider: CouchbaseAgentProvider,
         default_retry_strategy: Arc<dyn RetryStrategy>,
+        default_timeouts: Timeouts,
     ) -> Self {
         Self {
             agent_provider,
             keyspace: None,
             default_retry_strategy,
+            default_timeouts,
         }
     }
 
@@ -94,11 +98,13 @@ impl CouchbaseQueryClient {
         agent_provider: CouchbaseAgentProvider,
         keyspace: QueryKeyspace,
         default_retry_strategy: Arc<dyn RetryStrategy>,
+        default_timeouts: Timeouts,
     ) -> Self {
         Self {
             agent_provider,
             keyspace: Some(keyspace),
             default_retry_strategy,
+            default_timeouts,
         }
     }
 
@@ -113,6 +119,8 @@ impl CouchbaseQueryClient {
         }
 
         let ad_hoc = opts.ad_hoc.unwrap_or(true);
+        let timeout = opts.timeout.unwrap_or(self.default_timeouts.query);
+        let deadline = OperationDeadline::new(timeout, !opts.read_only.unwrap_or(false));
 
         let (mutation_state, scan_consistency) = match opts.scan_consistency {
             Some(ScanConsistency::AtPlus(state)) => (
@@ -144,7 +152,7 @@ impl CouchbaseQueryClient {
             .scan_consistency(scan_consistency)
             .scan_wait(opts.scan_wait)
             .sparse_scan_vectors(mutation_state)
-            .timeout(opts.server_timeout)
+            .timeout(opts.server_timeout.or(Some(timeout)))
             .use_replica(opts.use_replica.map(|r| r.into()))
             .named_args(opts.named_parameters)
             .raw(opts.raw)
@@ -162,20 +170,20 @@ impl CouchbaseQueryClient {
             ));
         }
 
-        let agent = self.agent_provider.get_agent().await;
-        if ad_hoc {
-            Ok(QueryResult::from(
-                CouchbaseAgentProvider::upgrade_agent(agent)?
-                    .query(query_opts)
-                    .await?,
-            ))
-        } else {
-            Ok(QueryResult::from(
-                CouchbaseAgentProvider::upgrade_agent(agent)?
-                    .prepared_query(query_opts)
-                    .await?,
-            ))
-        }
+        let stream = deadline
+            .run(async {
+                let agent = self.agent_provider.get_agent().await;
+                let agent = CouchbaseAgentProvider::upgrade_agent(agent)?;
+                let stream = if ad_hoc {
+                    agent.query(query_opts).await?
+                } else {
+                    agent.prepared_query(query_opts).await?
+                };
+                Ok(stream)
+            })
+            .await?;
+
+        Ok(QueryResult::with_deadline(stream, deadline))
     }
 
     pub fn tracing_client(&self) -> CouchbaseTracingClient {

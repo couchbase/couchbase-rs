@@ -33,6 +33,7 @@ use crate::clients::user_mgmt_client::{
 use crate::error;
 use crate::options::cluster_options::{ClusterOptions, TlsOptions};
 use crate::retry::RetryStrategy;
+use crate::timeouts::Timeouts;
 use couchbase_connstr::{parse, resolve, Address, SrvRecord};
 use couchbase_core::address;
 use couchbase_core::log_redaction::system_data;
@@ -223,6 +224,7 @@ impl ClusterClient {
 struct CouchbaseClusterBackend {
     agent_manager: Arc<OnDemandAgentManager>,
     default_retry_strategy: Arc<dyn RetryStrategy>,
+    default_timeouts: Timeouts,
     // We keep a reference to these for calls to set_authenticator.
     use_tls: bool,
     original_tls_options: Option<TlsOptions>,
@@ -238,6 +240,7 @@ impl CouchbaseClusterBackend {
         opts: ClusterOptions,
         extra_opts: HashMap<String, Vec<String>>,
     ) -> error::Result<CouchbaseClusterBackend> {
+        let default_timeouts = Timeouts::from(&opts.timeout_options);
         let default_retry_strategy = opts
             .default_retry_strategy
             .unwrap_or_else(|| Arc::new(BestEffortRetryStrategy::default()));
@@ -316,6 +319,7 @@ impl CouchbaseClusterBackend {
         Ok(Self {
             agent_manager: Arc::new(mgr),
             default_retry_strategy,
+            default_timeouts,
             use_tls: use_ssl,
             original_tls_options: opts.tls_options,
             original_authenticator,
@@ -327,6 +331,7 @@ impl CouchbaseClusterBackend {
             CouchbaseAgentProvider::with_bucket(self.agent_manager.clone(), name.clone()),
             name,
             self.default_retry_strategy.clone(),
+            self.default_timeouts,
         )
     }
 
@@ -336,6 +341,7 @@ impl CouchbaseClusterBackend {
         CouchbaseBucketMgmtClient::new(
             CouchbaseAgentProvider::with_agent(agent.clone()),
             self.default_retry_strategy.clone(),
+            self.default_timeouts,
         )
     }
 
@@ -345,6 +351,7 @@ impl CouchbaseClusterBackend {
         CouchbaseUserMgmtClient::new(
             CouchbaseAgentProvider::with_agent(agent.clone()),
             self.default_retry_strategy.clone(),
+            self.default_timeouts,
         )
     }
 
@@ -354,6 +361,7 @@ impl CouchbaseClusterBackend {
         CouchbaseQueryClient::new(
             CouchbaseAgentProvider::with_agent(agent.clone()),
             self.default_retry_strategy.clone(),
+            self.default_timeouts,
         )
     }
 
@@ -363,6 +371,7 @@ impl CouchbaseClusterBackend {
         CouchbaseSearchClient::new(
             CouchbaseAgentProvider::with_agent(agent.clone()),
             self.default_retry_strategy.clone(),
+            self.default_timeouts,
         )
     }
 
@@ -372,6 +381,7 @@ impl CouchbaseClusterBackend {
         CouchbaseDiagnosticsClient::new(
             CouchbaseAgentProvider::with_agent(agent.clone()),
             self.default_retry_strategy.clone(),
+            self.default_timeouts,
         )
     }
 
