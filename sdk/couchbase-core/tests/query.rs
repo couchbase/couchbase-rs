@@ -30,6 +30,7 @@ use couchbase_core::options::query::{
 };
 use couchbase_core::queryx::ensure_index_helper::DesiredState;
 use couchbase_core::queryx::query_result::Status;
+use couchbase_core::results::query::QueryResultStream;
 
 mod common;
 
@@ -129,6 +130,70 @@ fn test_prepared_query_basic() {
         // MB-65750: signature is inconsistent in format.
         assert!(!meta.signature.as_ref().unwrap().get().is_empty());
     });
+}
+
+#[test]
+fn test_prepared_query_reprepares_after_plan_removed() {
+    run_test(async |mut agent| {
+        // Use a unique statement so that the shared agent's prepared statement cache is not
+        // affected by, and does not affect, other tests.
+        let value = generate_string_key();
+        let statement = format!("SELECT {} AS v", serde_json::to_string(&value).unwrap());
+
+        // First execution prepares the statement and caches the prepared name.
+        let mut res = agent
+            .prepared_query(QueryOptions::default().statement(statement.clone()))
+            .await
+            .unwrap();
+        let rows = collect_rows(&mut res).await;
+        assert_eq!(vec![serde_json::json!({ "v": value })], rows);
+        assert!(res.metadata().unwrap().prepared.is_some());
+
+        // Remove the plan from every query node so that executing the cached prepared name fails,
+        // forcing the SDK to fall back to re-preparing the statement.
+        // Match on the statement rather than the name: the name returned to the SDK is prefixed
+        // with the preparing node (e.g. `[host:8091]<uuid>`), but `system:prepareds.name` is not.
+        let mut res = agent
+            .query(
+                QueryOptions::default()
+                    .statement("DELETE FROM system:prepareds WHERE statement = $1".to_string())
+                    .args(vec![Value::String(format!("PREPARE {statement}"))]),
+            )
+            .await
+            .unwrap();
+        collect_rows(&mut res).await;
+        let mutation_count = res
+            .metadata()
+            .unwrap()
+            .metrics
+            .as_ref()
+            .expect("expected metrics to be present")
+            .mutation_count;
+        assert_ne!(
+            0, mutation_count,
+            "expected the prepared plan to be deleted"
+        );
+
+        // Second execution must transparently re-prepare and succeed.
+        let mut res = agent
+            .prepared_query(QueryOptions::default().statement(statement))
+            .await
+            .unwrap();
+        let rows = collect_rows(&mut res).await;
+        assert_eq!(vec![serde_json::json!({ "v": value })], rows);
+
+        let meta = res.metadata().unwrap();
+        assert_eq!(Status::Success, meta.status);
+        assert!(meta.prepared.is_some());
+    });
+}
+
+async fn collect_rows(res: &mut QueryResultStream) -> Vec<Value> {
+    let mut rows = vec![];
+    while let Some(row) = res.next().await {
+        rows.push(serde_json::from_slice(&row.unwrap()).unwrap());
+    }
+    rows
 }
 
 #[test]

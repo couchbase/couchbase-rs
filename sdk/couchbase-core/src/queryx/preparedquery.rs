@@ -86,6 +86,7 @@ impl<C: Client> PreparedQuery<C> {
             }
         };
 
+        opts.prepared = None;
         opts.statement = Some(format!("PREPARE {}", statement));
         opts.auto_execute = Some(true);
 
