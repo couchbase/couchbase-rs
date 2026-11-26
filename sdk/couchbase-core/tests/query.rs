@@ -300,3 +300,81 @@ fn test_query_indexes() {
         );
     });
 }
+
+// Returns (node UUID, host) for every node running the query service, according to the query
+// service itself, along with the UUIDs of nodes that do not run it.
+async fn query_and_non_query_nodes(
+    agent: &crate::common::test_agent::TestAgent,
+) -> (Vec<(String, String)>, Vec<String>) {
+    let opts = QueryOptions::default().statement("SELECT RAW n FROM system:nodes n".to_string());
+    let mut res = agent.query(opts).await.unwrap();
+
+    let mut query_nodes = vec![];
+    let mut non_query_nodes = vec![];
+    while let Some(row) = res.next().await {
+        let node: Value = serde_json::from_slice(&row.unwrap()).unwrap();
+        let uuid = node["uuid"].as_str().unwrap().to_string();
+        let services = node["services"].as_array().unwrap();
+        if services.iter().any(|s| s == "n1ql") {
+            let name = node["name"].as_str().unwrap();
+            let host = name.rsplit_once(':').unwrap().0.to_string();
+            query_nodes.push((uuid, host));
+        } else {
+            non_query_nodes.push(uuid);
+        }
+    }
+
+    (query_nodes, non_query_nodes)
+}
+
+#[test]
+fn test_query_routed_by_node_uuid() {
+    run_test(async |agent| {
+        let (query_nodes, _) = query_and_non_query_nodes(&agent).await;
+        assert!(!query_nodes.is_empty());
+
+        for (node_uuid, host) in query_nodes {
+            let opts = QueryOptions::default()
+                .statement("SELECT 1=1".to_string())
+                .node_uuid(node_uuid.clone());
+            let mut res = agent.query(opts).await.unwrap();
+
+            let endpoint = res.endpoint().to_string();
+            assert!(
+                endpoint.contains(&format!("//{host}:")),
+                "query for node {node_uuid} ({host}) was sent to {endpoint}"
+            );
+
+            while let Some(row) = res.next().await {
+                row.unwrap();
+            }
+            assert_eq!(Status::Success, res.metadata().unwrap().status);
+        }
+    });
+}
+
+#[test]
+fn test_query_routed_to_unknown_node_uuid_fails() {
+    run_test(async |agent| {
+        let (_, non_query_nodes) = query_and_non_query_nodes(&agent).await;
+
+        let mut node_uuids = vec!["00000000000000000000000000000000".to_string()];
+        node_uuids.extend(non_query_nodes);
+
+        for node_uuid in node_uuids {
+            let opts = QueryOptions::default()
+                .statement("SELECT 1=1".to_string())
+                .node_uuid(node_uuid.clone());
+
+            let err = match agent.query(opts).await {
+                Ok(_) => panic!("expected query routed to {node_uuid} to fail"),
+                Err(e) => e,
+            };
+
+            assert!(
+                matches!(err.kind(), couchbase_core::error::ErrorKind::NodeNotKnown { node_uuid: uuid, .. } if uuid == &node_uuid),
+                "unexpected error for {node_uuid}: {err}"
+            );
+        }
+    });
+}

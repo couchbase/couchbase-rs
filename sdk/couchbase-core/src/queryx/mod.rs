@@ -16,6 +16,7 @@
  *
  */
 
+pub mod conversational;
 pub mod ensure_index_helper;
 pub mod error;
 pub mod index;

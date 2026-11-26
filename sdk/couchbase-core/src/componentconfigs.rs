@@ -24,7 +24,7 @@ use crate::diagnosticscomponent::DiagnosticsComponentConfig;
 use crate::kvclient_babysitter::KvTarget;
 use crate::mgmtcomponent::MgmtComponentConfig;
 use crate::parsedconfig::{ParsedConfig, ParsedConfigFeature};
-use crate::querycomponent::QueryComponentConfig;
+use crate::querycomponent::{QueryComponentConfig, QueryNodeUuids};
 use crate::searchcomponent::SearchComponentConfig;
 use crate::service_type::ServiceType;
 use crate::tls_config::TlsConfig;
@@ -83,6 +83,7 @@ impl AgentComponentConfigs {
         let mut analytics_endpoints: HashMap<String, NetworkAndCanonicalEndpoint> = HashMap::new();
         let mut query_endpoints: HashMap<String, NetworkAndCanonicalEndpoint> = HashMap::new();
         let mut search_endpoints: HashMap<String, NetworkAndCanonicalEndpoint> = HashMap::new();
+        let mut query_node_uuids: HashMap<String, String> = HashMap::new();
 
         for node in network_info.nodes {
             let kv_ep_id = format!("kv{}", node.node_id);
@@ -237,6 +238,13 @@ impl AgentComponentConfigs {
                     );
                 }
             }
+
+            if let Some(node_uuid) = node.node_uuid {
+                let query_ep_id = format!("query{}", node.node_id);
+                if query_endpoints.contains_key(&query_ep_id) {
+                    query_node_uuids.insert(node_uuid, query_ep_id);
+                }
+            }
         }
 
         let mut kv_targets = HashMap::new();
@@ -294,8 +302,12 @@ impl AgentComponentConfigs {
                 authenticator: authenticator.clone(),
             },
             query_config: QueryComponentConfig {
+                node_uuids: QueryNodeUuids::new(query_node_uuids, &query_endpoints),
                 endpoints: query_endpoints,
                 authenticator: authenticator.clone(),
+                conversational_query_supported: config
+                    .features
+                    .contains(&ParsedConfigFeature::QueryConversationalQuery),
             },
             search_config: SearchComponentConfig {
                 endpoints: search_endpoints,
@@ -321,5 +333,147 @@ impl AgentComponentConfigs {
             },
             tracing_config: TracingComponentConfig { cluster_labels },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::authenticator::{Authenticator, PasswordAuthenticator};
+    use crate::cbconfig;
+    use crate::componentconfigs::AgentComponentConfigs;
+    use crate::configparser::ConfigParser;
+    use std::collections::HashMap;
+
+    fn gen_query_node_uuids(network_type: &str) -> HashMap<String, String> {
+        let config = br#"{
+            "rev": 1,
+            "nodesExt": [
+                {
+                    "services": {"mgmt": 8091, "kv": 11210, "n1ql": 8093},
+                    "hostname": "10.0.0.1",
+                    "nodeUUID": "uuid-a",
+                    "alternateAddresses": {
+                        "external": {"hostname": "ext-a", "ports": {"mgmt": 18091, "n1ql": 18093}}
+                    }
+                },
+                {
+                    "services": {"mgmt": 8091, "kv": 11210, "n1ql": 8093},
+                    "hostname": "10.0.0.2",
+                    "nodeUUID": "uuid-b",
+                    "alternateAddresses": {
+                        "external": {"hostname": "ext-b", "ports": {"mgmt": 18091}}
+                    }
+                },
+                {
+                    "services": {"mgmt": 8091, "kv": 11210, "n1ql": 8093},
+                    "hostname": "10.0.0.3"
+                },
+                {
+                    "services": {"mgmt": 8091, "kv": 11210},
+                    "hostname": "10.0.0.4",
+                    "nodeUUID": "uuid-d"
+                }
+            ],
+            "clusterCapabilitiesVer": [],
+            "clusterCapabilities": {}
+        }"#;
+
+        let config = cbconfig::parse::parse_terse_config(config, "10.0.0.1").unwrap();
+        let parsed = ConfigParser::parse_terse_config(config, "10.0.0.1").unwrap();
+
+        let configs = AgentComponentConfigs::gen_from_config(
+            &parsed,
+            network_type,
+            None,
+            None,
+            Authenticator::PasswordAuthenticator(PasswordAuthenticator {
+                username: "user".to_string(),
+                password: "pass".to_string(),
+            }),
+        );
+
+        let query_config = configs.query_config;
+        for endpoint_id in query_config.node_uuids.endpoint_ids.values() {
+            assert!(query_config.endpoints.contains_key(endpoint_id));
+        }
+
+        assert!(!query_config.node_uuids.shared_endpoint);
+        query_config.node_uuids.endpoint_ids
+    }
+
+    #[test]
+    fn query_node_uuids_only_include_nodes_with_query_endpoints() {
+        let node_uuids = gen_query_node_uuids("default");
+
+        assert_eq!(
+            HashMap::from([
+                ("uuid-a".to_string(), "queryep-10.0.0.1-8091".to_string()),
+                ("uuid-b".to_string(), "queryep-10.0.0.2-8091".to_string()),
+            ]),
+            node_uuids
+        );
+    }
+
+    #[test]
+    fn query_node_uuids_follow_selected_network() {
+        let node_uuids = gen_query_node_uuids("external");
+
+        assert_eq!(
+            HashMap::from([("uuid-a".to_string(), "queryep-10.0.0.1-8091".to_string())]),
+            node_uuids
+        );
+    }
+
+    #[test]
+    fn query_node_uuids_detect_shared_endpoint() {
+        // Capella Private Link exposes every node through the same alternate address.
+        let config = br#"{
+            "rev": 1,
+            "nodesExt": [
+                {
+                    "services": {"mgmt": 8091, "n1ql": 8093},
+                    "hostname": "10.0.0.1",
+                    "nodeUUID": "uuid-a",
+                    "alternateAddresses": {
+                        "external": {"hostname": "pl.example", "ports": {"mgmt": 18091, "n1ql": 18093}}
+                    }
+                },
+                {
+                    "services": {"mgmt": 8091, "n1ql": 8093},
+                    "hostname": "10.0.0.2",
+                    "nodeUUID": "uuid-b",
+                    "alternateAddresses": {
+                        "external": {"hostname": "pl.example", "ports": {"mgmt": 18091, "n1ql": 18093}}
+                    }
+                }
+            ],
+            "clusterCapabilitiesVer": [],
+            "clusterCapabilities": {}
+        }"#;
+
+        let config = cbconfig::parse::parse_terse_config(config, "10.0.0.1").unwrap();
+        let parsed = ConfigParser::parse_terse_config(config, "10.0.0.1").unwrap();
+
+        let gen = |network_type: &str| {
+            AgentComponentConfigs::gen_from_config(
+                &parsed,
+                network_type,
+                None,
+                None,
+                Authenticator::PasswordAuthenticator(PasswordAuthenticator {
+                    username: "user".to_string(),
+                    password: "pass".to_string(),
+                }),
+            )
+            .query_config
+            .node_uuids
+        };
+
+        let external = gen("external");
+        assert_eq!(2, external.endpoint_ids.len());
+        assert!(external.shared_endpoint);
+
+        // The internal addresses are distinct, so the default network is unaffected.
+        assert!(!gen("default").shared_endpoint);
     }
 }

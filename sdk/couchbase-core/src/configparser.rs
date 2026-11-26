@@ -53,6 +53,7 @@ impl ConfigParser {
             }
 
             let this_node = ParsedConfigNode {
+                node_uuid: node.node_uuid.filter(|uuid| !uuid.is_empty()),
                 has_data: node_idx < len_nodes,
                 addresses: Self::parse_config_hosts_into(
                     &node_hostname,
@@ -109,6 +110,12 @@ impl ConfigParser {
             }
             if caps.contains(&"udfQuery".to_string()) {
                 features.push(ParsedConfigFeature::FtsCustomScriptQueries);
+            }
+        }
+
+        if let Some(caps) = config.cluster_capabilities.get("n1ql") {
+            if caps.contains(&"conversationalQuery".to_string()) {
+                features.push(ParsedConfigFeature::QueryConversationalQuery);
             }
         }
 
@@ -241,5 +248,59 @@ mod tests {
             .collect();
 
         assert_eq!(vec!["[fd00::1]", "[fd00::1]", "[fd00::2]"], hostnames);
+    }
+
+    #[test]
+    fn parse_terse_config_node_uuids() {
+        let config = br#"{
+            "rev": 1,
+            "nodesExt": [
+                {"services": {"kv": 11210}, "hostname": "10.0.0.1", "nodeUUID": "uuid-a"},
+                {"services": {"kv": 11210}, "hostname": "10.0.0.2", "nodeUUID": ""},
+                {"services": {"kv": 11210}, "hostname": "10.0.0.3"}
+            ],
+            "clusterCapabilitiesVer": [],
+            "clusterCapabilities": {}
+        }"#;
+
+        let config = cbconfig::parse::parse_terse_config(config, "10.0.0.1").unwrap();
+        let parsed = ConfigParser::parse_terse_config(config, "10.0.0.1").unwrap();
+
+        let node_uuids: Vec<Option<&str>> = parsed
+            .nodes
+            .iter()
+            .map(|node| node.node_uuid.as_deref())
+            .collect();
+
+        assert_eq!(vec![Some("uuid-a"), None, None], node_uuids);
+    }
+
+    #[test]
+    fn parse_terse_config_conversational_query_capability() {
+        use crate::parsedconfig::ParsedConfigFeature;
+
+        let parse = |caps: &str| {
+            let config = format!(
+                r#"{{
+                    "rev": 1,
+                    "nodesExt": [{{"services": {{"n1ql": 8093}}, "hostname": "10.0.0.1"}}],
+                    "clusterCapabilitiesVer": [1, 0],
+                    "clusterCapabilities": {caps}
+                }}"#
+            );
+            let config =
+                cbconfig::parse::parse_terse_config(config.as_bytes(), "10.0.0.1").unwrap();
+            ConfigParser::parse_terse_config(config, "10.0.0.1")
+                .unwrap()
+                .features
+                .contains(&ParsedConfigFeature::QueryConversationalQuery)
+        };
+
+        assert!(parse(
+            r#"{"n1ql": ["enhancedPreparedStatements", "conversationalQuery"]}"#
+        ));
+        assert!(!parse(r#"{"n1ql": ["enhancedPreparedStatements"]}"#));
+        assert!(!parse(r#"{"search": ["conversationalQuery"]}"#));
+        assert!(!parse("{}"));
     }
 }

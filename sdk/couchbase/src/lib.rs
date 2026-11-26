@@ -260,6 +260,7 @@ pub mod collection;
 mod collection_binary_crud;
 mod collection_crud;
 pub mod collection_ds;
+pub mod conversational_query;
 pub mod diagnostics;
 pub mod durability_level;
 pub mod error;

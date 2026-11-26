@@ -311,3 +311,26 @@ impl QueryOptions {
         self
     }
 }
+
+pub(crate) fn split_scan_consistency(
+    scan_consistency: Option<ScanConsistency>,
+) -> (
+    Option<queryx::query_options::ScanConsistency>,
+    Option<HashMap<String, queryx::query_options::SparseScanVectors>>,
+) {
+    match scan_consistency {
+        Some(ScanConsistency::AtPlus(state)) => (
+            Some(queryx::query_options::ScanConsistency::AtPlus),
+            Some(state.into()),
+        ),
+        Some(ScanConsistency::NotBounded) => (
+            Some(queryx::query_options::ScanConsistency::NotBounded),
+            None,
+        ),
+        Some(ScanConsistency::RequestPlus) => (
+            Some(queryx::query_options::ScanConsistency::RequestPlus),
+            None,
+        ),
+        None => (None, None),
+    }
+}

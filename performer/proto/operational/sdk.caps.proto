@@ -176,4 +176,41 @@ enum Caps {
 
   // The SDK has support for the CustomScoreQuery and CustomFilterQuery SearchQuery types
   SDK_SEARCH_CUSTOM_SCRIPT_QUERIES = 47;
+
+  // The performer supports the UserManager API (SDK-RFC 54).
+  // This is everything under sdk.cluster.user_manager
+  SDK_USER_MANAGER = 48;
+
+  // The SDK supports the external authentication domain in the UserManager (SDK-RFC 54): a domain can be given to
+  // getUser, getAllUsers, upsertUser and dropUser, so users in the external domain can be created, read and dropped.
+  //
+  // Without this cap:
+  // The driver can send an unset AuthDomain or AuthDomain.LOCAL.
+  // These can both be treated by the performer as LOCAL (Which is presumed to be the only option)
+  //
+  // With this cap:
+  // The driver can send AuthDomain.LOCAL or AuthDomain.EXTERNAL which need to be passed to the SDK.
+  // An unset AuthDomain should not be defaulted by the performer so the SDK's default behaviour is tested
+  SDK_USER_MANAGER_EXTERNAL_DOMAIN = 49;
+
+  // UserManager.getAllUsers() with no domain returns the users in every domain, local and external.  SDK-RFC 54
+  // specifies that it defaults to the local domain, so only declare this if the SDK deviates from the RFC.
+  SDK_USER_MANAGER_GET_ALL_USERS_RETURNS_ALL_DOMAINS = 50;
+
+  // The SDK's UserManager does not raise the errors SDK-RFC 54 and SDK-RFC 58 require when the server rejects a
+  // request, e.g. it doesn't raise InvalidArgumentException for an HTTP 400 even if SDK_HTTP_400_INVALID_ARGUMENT is
+  // declared.  Only declare this if the SDK deviates from the RFCs.
+  //
+  // The driver has SDK-specific expectations for each SDK that declares this, so a new SDK declaring it also needs
+  // its expected errors adding to the driver.
+  SDK_USER_MANAGER_NON_STANDARD_ERROR_HANDLING = 51;
+
+  // The SDK reports a role's scope or collection of "*" (which the server returns for roles that apply to all scopes
+  // or collections) as "*", rather than resetting it to not present as SDK-RFC 54 requires.  Only declare this if the
+  // SDK deviates from the RFC.
+  SDK_USER_MANAGER_ROLE_WILDCARDS_NOT_RESET = 52;
+
+  // The SDK supports Conversational Query (SDK-RFC 86).
+  // This is everything under sdk.cluster.conversational_query, including SDK_CHAT_CURRENTLY_UNAVAILABLE_EXCEPTION.
+  SDK_CONVERSATIONAL_QUERY = 53;
 }

@@ -55,6 +55,7 @@ pub(crate) struct ParsedConfigNodeAddresses {
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub(crate) struct ParsedConfigNode {
+    pub node_uuid: Option<String>,
     pub has_data: bool,
     pub addresses: ParsedConfigNodeAddresses,
     pub alt_addresses: HashMap<String, ParsedConfigNodeAddresses>,
@@ -65,12 +66,14 @@ pub(crate) enum ParsedConfigFeature {
     FtsVectorSearch,
     FtsScoreFusion,
     FtsCustomScriptQueries,
+    QueryConversationalQuery,
     Unknown,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) struct NetworkConfigNode {
     pub node_id: String,
+    pub node_uuid: Option<String>,
     pub hostname: String,
     pub has_data: bool,
     pub non_ssl_ports: ParsedConfigNodePorts,
@@ -188,6 +191,7 @@ impl ParsedConfig {
             let node_info = if network_type == "default" {
                 NetworkConfigNode {
                     node_id,
+                    node_uuid: node.node_uuid.clone(),
                     hostname: node.addresses.hostname.clone(),
                     has_data: node.has_data,
                     non_ssl_ports: node.addresses.non_ssl_ports.clone(),
@@ -197,6 +201,7 @@ impl ParsedConfig {
             } else if let Some(alt_info) = node.alt_addresses.get(network_type) {
                 NetworkConfigNode {
                     node_id,
+                    node_uuid: node.node_uuid.clone(),
                     hostname: alt_info.hostname.clone(),
                     has_data: node.has_data,
                     non_ssl_ports: alt_info.non_ssl_ports.clone(),
@@ -206,6 +211,7 @@ impl ParsedConfig {
             } else {
                 NetworkConfigNode {
                     node_id,
+                    node_uuid: node.node_uuid.clone(),
                     hostname: "".to_string(),
                     has_data: node.has_data,
                     non_ssl_ports: ParsedConfigNodePorts::default(),

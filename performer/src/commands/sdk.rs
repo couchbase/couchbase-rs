@@ -2,6 +2,7 @@ use crate::cluster::connection::ConnectionSet;
 use crate::commands::authenticator::AuthenticatorCommand;
 use crate::commands::bucket_management::BucketManagerCommand;
 use crate::commands::collection_management::CollectionManagerCommand;
+use crate::commands::conversational_query::ConversationalQueryCommand;
 use crate::commands::helpers::{current_timestamp, duration_from_millis};
 use crate::commands::kv::{
     ExistsCommand, GetAndLockCommand, GetAndTouchCommand, GetCommand, GetReplicaCommand,
@@ -63,6 +64,7 @@ pub enum SdkCommand {
     WaitUntilReady(WaitUntilReadyCommand),
     Search(SearchCommand),
     Authenticator(AuthenticatorCommand),
+    ConversationalQuery(ConversationalQueryCommand),
     // ...
 }
 
@@ -125,6 +127,12 @@ impl SdkCommand {
                 run_with_timeout(timeout, cmd.execute(batcher, stream_owner, run_id)).await
             }
             SdkCommand::Authenticator(cmd) => cmd.execute(batcher).await,
+            SdkCommand::ConversationalQuery(cmd) => {
+                let timeout = cmd
+                    .timeout_override()
+                    .unwrap_or(timeout_options.query_timeout);
+                run_with_timeout(timeout, cmd.execute(batcher)).await
+            }
         }
     }
 }
@@ -218,6 +226,11 @@ fn build_cluster_command(
         cluster_level_command::Command::Authenticator(cmd) => Ok(SdkCommand::Authenticator(
             AuthenticatorCommand::new(cluster, cmd.authenticator.unwrap(), return_result),
         )),
+        cluster_level_command::Command::ConversationalQuery(cmd) => {
+            Ok(SdkCommand::ConversationalQuery(
+                ConversationalQueryCommand::new(conn.clone(), cmd, return_result, &span_owner)?,
+            ))
+        }
         _ => Err(Error::unimplemented("Unimplemented cluster command type")),
     }
 }

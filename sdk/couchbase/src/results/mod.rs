@@ -34,6 +34,7 @@
 //! | [`query_index_mgmt_results`] | Results for query index management |
 
 pub mod collections_mgmt_results;
+pub mod conversational_query_results;
 pub mod diagnostics;
 pub mod kv_binary_results;
 pub mod kv_results;

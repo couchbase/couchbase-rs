@@ -67,6 +67,10 @@ impl ErrorContext {
         self
     }
 
+    pub(crate) fn extended_context(&self) -> Option<&ExtendedErrorContext> {
+        self.extended_context.as_ref()
+    }
+
     /// Returns the last address that the operation was dispatched to, if available.
     pub fn last_dispatched_to(&self) -> Option<&String> {
         self.last_dispatched_to.as_ref()
@@ -130,6 +134,7 @@ pub(crate) enum ExtendedErrorContext {
     Query(QueryErrorContext),
     Search(SearchErrorContext),
     Http(HttpErrorContext),
+    Chat(ChatErrorContext),
 }
 
 impl Serialize for ExtendedErrorContext {
@@ -142,6 +147,7 @@ impl Serialize for ExtendedErrorContext {
             ExtendedErrorContext::Query(context) => context.serialize(serializer),
             ExtendedErrorContext::Search(context) => context.serialize(serializer),
             ExtendedErrorContext::Http(context) => context.serialize(serializer),
+            ExtendedErrorContext::Chat(context) => context.serialize(serializer),
         }
     }
 }
@@ -266,7 +272,7 @@ pub struct QueryErrorDesc {
     pub(crate) code: u32,
     pub(crate) message: String,
     pub(crate) retry: bool,
-    pub(crate) reason: HashMap<String, Value>,
+    pub(crate) reason: Value,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -332,6 +338,32 @@ impl Serialize for QueryErrorContext {
 
         state.serialize_field("descs", &self.descs)?;
 
+        state.end()
+    }
+}
+
+/// Context for a Conversational Query chat operation that could not reach the chat.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct ChatErrorContext {
+    pub(crate) chat_id: String,
+    pub(crate) owner: Option<String>,
+    pub(crate) operation: &'static str,
+    // The server error, when Query reported that the chat is not live.
+    pub(crate) query: Option<QueryErrorContext>,
+}
+
+impl Serialize for ChatErrorContext {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("context", 4)?;
+        state.serialize_field("chatId", &self.chat_id)?;
+        state.serialize_field("owner", &self.owner)?;
+        state.serialize_field("operation", self.operation)?;
+        if let Some(ref query) = self.query {
+            state.serialize_field("query", query)?;
+        }
         state.end()
     }
 }

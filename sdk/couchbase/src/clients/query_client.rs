@@ -18,7 +18,7 @@
 use crate::clients::agent_provider::CouchbaseAgentProvider;
 use crate::clients::tracing_client::{CouchbaseTracingClient, TracingClient, TracingClientBackend};
 use crate::error;
-use crate::options::query_options::{QueryOptions, ScanConsistency};
+use crate::options::query_options::{split_scan_consistency, QueryOptions};
 use crate::results::query_results::QueryResult;
 use crate::retry::RetryStrategy;
 use couchbase_core::options::query;
@@ -114,21 +114,7 @@ impl CouchbaseQueryClient {
 
         let ad_hoc = opts.ad_hoc.unwrap_or(true);
 
-        let (mutation_state, scan_consistency) = match opts.scan_consistency {
-            Some(ScanConsistency::AtPlus(state)) => (
-                Some(state.into()),
-                Some(queryx::query_options::ScanConsistency::AtPlus),
-            ),
-            Some(ScanConsistency::NotBounded) => (
-                None,
-                Some(queryx::query_options::ScanConsistency::NotBounded),
-            ),
-            Some(ScanConsistency::RequestPlus) => (
-                None,
-                Some(queryx::query_options::ScanConsistency::RequestPlus),
-            ),
-            None => (None, None),
-        };
+        let (scan_consistency, mutation_state) = split_scan_consistency(opts.scan_consistency);
 
         let mut query_opts = query::QueryOptions::new()
             .args(opts.positional_parameters)

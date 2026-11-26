@@ -30,6 +30,8 @@ pub struct QueryErrorResponse {
 #[derive(Debug, Deserialize)]
 pub struct QueryEarlyMetaData {
     pub prepared: Option<String>,
+    // Conversational Query: precedes `results` when both are present.
+    pub generated_statement: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,6 +50,22 @@ pub struct QueryMetaData {
     pub metrics: Option<QueryMetrics>,
     pub profile: Option<Box<RawValue>>,
     pub signature: Option<Box<RawValue>>,
+    #[serde(rename = "chatId")]
+    pub chat_id: Option<String>,
+    #[serde(rename = "requestTokens")]
+    pub request_tokens: Option<QueryTokenUsage>,
+    #[serde(rename = "chatTokens")]
+    pub chat_tokens: Option<QueryTokenUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct QueryTokenUsage {
+    #[serde(rename = "promptTokens")]
+    pub prompt_tokens: Option<u64>,
+    #[serde(rename = "completionTokens")]
+    pub completion_tokens: Option<u64>,
+    #[serde(rename = "totalTokens")]
+    pub total_tokens: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,6 +86,10 @@ pub struct QueryMetrics {
     pub error_count: Option<u64>,
     #[serde(rename = "warningCount")]
     pub warning_count: Option<u64>,
+    #[serde(rename = "naturalLanguageProcessingTime")]
+    pub natural_language_processing_time: Option<String>,
+    #[serde(rename = "generatedStatementExecuted")]
+    pub generated_statement_executed: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,6 +103,6 @@ pub struct QueryError {
     pub code: u32,
     pub msg: String,
     #[serde(default)]
-    pub reason: std::collections::HashMap<String, Value>,
+    pub reason: Option<Value>,
     pub retry: Option<bool>,
 }

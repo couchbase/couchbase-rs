@@ -122,6 +122,9 @@ fn map_cb_error_to_proto(kind: &ErrorKind) -> CouchbaseExceptionType {
         ErrorKind::BucketExists => CouchbaseExceptionType::SdkBucketExistsException,
         ErrorKind::UserExists => CouchbaseExceptionType::SdkUserExistsException,
         ErrorKind::BucketNotFlushable => CouchbaseExceptionType::SdkBucketNotFlushableException,
+        ErrorKind::ConversationalChatCurrentlyUnavailable => {
+            CouchbaseExceptionType::SdkChatCurrentlyUnavailableException
+        }
 
         // These don't have a direct mapping to the proto exceptions
         ErrorKind::XattrInvalidOrder => CouchbaseExceptionType::SdkCouchbaseException,

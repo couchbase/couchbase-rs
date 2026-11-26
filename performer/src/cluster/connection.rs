@@ -2,6 +2,9 @@ use crate::cluster::options::TimeoutOptions;
 use crate::commands::sdk::run_with_timeout;
 use crate::errors::error::Error;
 use couchbase::cluster::Cluster;
+use couchbase::conversational_query::ConversationalQueryChat;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tonic::Status;
 use tracing::dispatcher::Dispatch;
@@ -10,6 +13,8 @@ pub struct ConnectionSet {
     pub cluster: Cluster,
     pub tracing_subscriber: Dispatch,
     pub timeout_options: TimeoutOptions,
+    // Conversational Query chats created by begin_chat and attach_chat, by the driver's chat_ref.
+    pub chats: Mutex<HashMap<String, Arc<ConversationalQueryChat>>>,
 }
 
 impl ConnectionSet {
@@ -33,6 +38,7 @@ impl ConnectionSet {
             cluster,
             tracing_subscriber,
             timeout_options,
+            chats: Mutex::new(HashMap::new()),
         })
     }
 
