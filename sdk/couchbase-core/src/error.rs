@@ -55,6 +55,9 @@ impl StdError for Error {
             ErrorKind::Search(err) => err.source(),
             ErrorKind::Http(err) => err.source(),
             ErrorKind::Mgmt(err) => err.source(),
+            ErrorKind::ConversationalChatCurrentlyUnavailable {
+                source: Some(err), ..
+            } => Some(err),
             _ => None,
         }
     }
@@ -114,6 +117,67 @@ impl Error {
     pub fn retry_info(&self) -> Option<&RetryRequest> {
         self.retry_info.as_ref()
     }
+
+    /// For Conversational Query, where the first Query error decides rather than the first
+    /// non-retryable one: this error with the first Query error chosen.
+    pub fn with_first_query_error_chosen(self) -> Self {
+        let chosen = match self.kind.as_ref() {
+            ErrorKind::Query(e) => e.with_first_error_chosen(),
+            _ => None,
+        };
+        match chosen {
+            Some(e) => Self {
+                kind: Arc::new(ErrorKind::Query(e)),
+                retry_info: self.retry_info,
+            },
+            None => self,
+        }
+    }
+
+    /// Whether the request that produced this error reached the server.
+    pub(crate) fn dispatch_outcome(&self) -> DispatchOutcome {
+        match self.kind.as_ref() {
+            ErrorKind::Query(e) => query_dispatch_outcome(e),
+            ErrorKind::Http(e) => http_dispatch_outcome(e),
+            ErrorKind::NodeNotKnown { .. }
+            | ErrorKind::EndpointNotKnown { .. }
+            | ErrorKind::FeatureNotAvailable { .. }
+            | ErrorKind::ServiceNotAvailable { .. }
+            | ErrorKind::NoEndpointsAvailable
+            | ErrorKind::Shutdown
+            | ErrorKind::InvalidArgument { .. } => DispatchOutcome::NotDispatched,
+            _ => DispatchOutcome::Unknown,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DispatchOutcome {
+    NotDispatched,
+    Response,
+    Unknown,
+}
+
+fn query_dispatch_outcome(e: &QueryError) -> DispatchOutcome {
+    use crate::queryx::error::ErrorKind as QueryErrorKind;
+
+    match e.kind() {
+        QueryErrorKind::Server(_) | QueryErrorKind::Resource(_) => DispatchOutcome::Response,
+        QueryErrorKind::Http { error, .. } => http_dispatch_outcome(error),
+        QueryErrorKind::Encoding { .. } => DispatchOutcome::NotDispatched,
+        QueryErrorKind::Message { .. } | QueryErrorKind::InvalidArgument { .. } => {
+            DispatchOutcome::Unknown
+        }
+    }
+}
+
+fn http_dispatch_outcome(e: &HttpError) -> DispatchOutcome {
+    match e.kind() {
+        crate::httpx::error::ErrorKind::Connect { .. } => DispatchOutcome::NotDispatched,
+        // reqwest reports any failure of an in-flight request as a request error, including
+        // after the request was written.
+        _ => DispatchOutcome::Unknown,
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -134,6 +198,17 @@ pub enum ErrorKind {
     #[non_exhaustive]
     EndpointNotKnown {
         endpoint: String,
+    },
+    #[non_exhaustive]
+    NodeNotKnown {
+        node_uuid: String,
+    },
+    #[non_exhaustive]
+    ConversationalChatCurrentlyUnavailable {
+        chat_id: String,
+        owner: Option<String>,
+        operation: &'static str,
+        source: Option<Error>,
     },
     InvalidVbucket {
         requested_vb_id: u16,
@@ -207,6 +282,12 @@ impl Display for ErrorKind {
             ErrorKind::EndpointNotKnown { endpoint } => {
                 write!(f, "endpoint not known: {endpoint}")
             }
+            ErrorKind::NodeNotKnown { node_uuid } => {
+                write!(f, "node not known: {node_uuid}")
+            }
+            ErrorKind::ConversationalChatCurrentlyUnavailable {
+                chat_id, operation, ..
+            } => write!(f, "chat {chat_id} currently unavailable for {operation}"),
             ErrorKind::NoEndpointsAvailable => write!(f, "no endpoints available"),
             ErrorKind::Shutdown => write!(f, "shutdown"),
             ErrorKind::NoBucket => write!(f, "no bucket selected"),
@@ -258,6 +339,13 @@ impl Display for ErrorKind {
     }
 }
 
+// Compares kinds only, so that errors can be nested in an `ErrorKind`.
+impl PartialEq for Error {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
 impl MetricsName for Error {
     fn metrics_name(&self) -> &'static str {
         self.kind().metrics_name()
@@ -278,6 +366,10 @@ impl MetricsName for ErrorKind {
             ErrorKind::FeatureNotAvailable { .. } => "FeatureNotAvailable",
             ErrorKind::VbucketMapOutdated => "VBucketMapOutdated",
             ErrorKind::EndpointNotKnown { .. } => "EndpointNotKnown",
+            ErrorKind::NodeNotKnown { .. } => "NodeNotKnown",
+            ErrorKind::ConversationalChatCurrentlyUnavailable { .. } => {
+                "ConversationalChatCurrentlyUnavailable"
+            }
             ErrorKind::InvalidVbucket { .. } => "InvalidVbucket",
             ErrorKind::InvalidReplica { .. } => "InvalidReplica",
             ErrorKind::NoEndpointsAvailable => "NoEndpointsAvailable",
@@ -473,5 +565,78 @@ impl From<SearchError> for Error {
 impl From<MgmtError> for Error {
     fn from(value: MgmtError) -> Self {
         Self::new(ErrorKind::Mgmt(value))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DispatchOutcome, Error, ErrorKind};
+    use crate::httpx::error::Error as HttpError;
+    use crate::queryx::error::{Error as QueryError, ServerError, ServerErrorKind};
+    use crate::service_type::ServiceType;
+    use http::StatusCode;
+
+    fn query(e: QueryError) -> Error {
+        Error::new(ErrorKind::Query(e))
+    }
+
+    fn query_http(e: HttpError) -> Error {
+        query(QueryError::new_http_error(e, "endpoint", None, None))
+    }
+
+    #[test]
+    fn errors_raised_before_dispatch_are_not_dispatched() {
+        for err in [
+            Error::new(ErrorKind::NodeNotKnown {
+                node_uuid: "uuid".into(),
+            }),
+            Error::new_feature_not_available_error("feature", "msg"),
+            Error::new(ErrorKind::ServiceNotAvailable {
+                service: ServiceType::QUERY,
+            }),
+            Error::new(ErrorKind::NoEndpointsAvailable),
+            Error::new(ErrorKind::Shutdown),
+            query_http(HttpError::new_connect_error("refused")),
+            query(QueryError::new_encoding_error("bad")),
+        ] {
+            assert_eq!(
+                DispatchOutcome::NotDispatched,
+                err.dispatch_outcome(),
+                "{err}"
+            );
+        }
+    }
+
+    #[test]
+    fn query_server_errors_are_responses() {
+        // Server-reported timeouts (1080) still count as complete responses.
+        let server_error = ServerError::new(
+            ServerErrorKind::Timeout,
+            "endpoint",
+            StatusCode::OK,
+            1080,
+            false,
+            "timeout",
+        );
+        let err = query(QueryError::new_server_error(server_error));
+        assert_eq!(DispatchOutcome::Response, err.dispatch_outcome());
+    }
+
+    #[test]
+    fn in_flight_and_unparseable_failures_are_unknown() {
+        for err in [
+            query_http(HttpError::new_request_error("connection reset")),
+            query_http(HttpError::new_decoding_error("truncated")),
+            query(QueryError::new_message_error(
+                "non-200 status code received 503",
+                None,
+                None,
+                None,
+            )),
+            query(QueryError::new_invalid_argument_error("<html>", None)),
+            Error::new_message_error("other"),
+        ] {
+            assert_eq!(DispatchOutcome::Unknown, err.dispatch_outcome(), "{err}");
+        }
     }
 }

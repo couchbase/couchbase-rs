@@ -30,6 +30,7 @@ use futures::future::err;
 use futures::{FutureExt, Stream, StreamExt, TryStreamExt};
 use http::StatusCode;
 use regex::Regex;
+use serde_json::Value;
 use tokio::sync::Mutex;
 use tracing::debug;
 
@@ -44,9 +45,10 @@ use crate::queryx::error::{
     Error, ErrorDesc, ErrorKind, ResourceError, ServerError, ServerErrorKind,
 };
 use crate::queryx::query_json::{
-    QueryEarlyMetaData, QueryError, QueryErrorResponse, QueryMetaData, QueryMetrics, QueryWarning,
+    QueryEarlyMetaData, QueryError, QueryErrorResponse, QueryMetaData, QueryMetrics,
+    QueryTokenUsage, QueryWarning,
 };
-use crate::queryx::query_result::{EarlyMetaData, MetaData, Metrics, Warning};
+use crate::queryx::query_result::{EarlyMetaData, MetaData, Metrics, TokenUsage, Warning};
 
 pub struct QueryRespReader {
     endpoint: String,
@@ -235,6 +237,7 @@ impl QueryRespReader {
 
         Ok(EarlyMetaData {
             prepared: early_metadata.prepared,
+            generated_statement: early_metadata.generated_statement,
         })
     }
 
@@ -277,6 +280,9 @@ impl QueryRespReader {
             signature: metadata.signature,
             warnings,
             profile: metadata.profile,
+            chat_id: metadata.chat_id,
+            request_tokens: metadata.request_tokens.map(Self::parse_token_usage),
+            chat_tokens: metadata.chat_tokens.map(Self::parse_token_usage),
         })
     }
 
@@ -303,8 +309,20 @@ impl QueryRespReader {
                 sort_count: m.sort_count.unwrap_or_default(),
                 error_count: m.error_count.unwrap_or_default(),
                 warning_count: m.warning_count.unwrap_or_default(),
+                natural_language_processing_time: m
+                    .natural_language_processing_time
+                    .and_then(|t| parse_duration_from_golang_string(&t).ok()),
+                generated_statement_executed: m.generated_statement_executed,
             }
         })
+    }
+
+    fn parse_token_usage(usage: QueryTokenUsage) -> TokenUsage {
+        TokenUsage {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+        }
     }
 
     fn parse_warnings(&self, warnings: Vec<QueryWarning>) -> Vec<Warning> {
@@ -353,7 +371,7 @@ impl QueryRespReader {
             .find(|desc| !desc.retry())
             .unwrap_or(&error_descs[0]);
 
-        let mut server_error = ServerError::new(
+        let server_error = ServerError::new(
             chosen_desc.kind().clone(),
             endpoint,
             status_code,
@@ -362,34 +380,10 @@ impl QueryRespReader {
             chosen_desc.message(),
         )
         .with_client_context_id(client_context_id)
-        .with_statement(statement);
+        .with_statement(statement)
+        .with_error_descs(error_descs);
 
-        if error_descs.len() > 1 {
-            server_error = server_error.with_error_descs(error_descs);
-        }
-
-        match server_error.kind() {
-            ServerErrorKind::ScopeNotFound => {
-                Error::new_resource_error(ResourceError::new(server_error))
-            }
-            ServerErrorKind::CollectionNotFound => {
-                Error::new_resource_error(ResourceError::new(server_error))
-            }
-            ServerErrorKind::IndexNotFound => {
-                Error::new_resource_error(ResourceError::new(server_error))
-            }
-            ServerErrorKind::IndexExists => {
-                Error::new_resource_error(ResourceError::new(server_error))
-            }
-            ServerErrorKind::AuthenticationFailure => {
-                if server_error.code() == 13014 {
-                    Error::new_resource_error(ResourceError::new(server_error))
-                } else {
-                    Error::new_server_error(server_error)
-                }
-            }
-            _ => Error::new_server_error(server_error),
-        }
+        Error::from_server_error(server_error)
     }
 
     fn parse_error_kind(error: &QueryError) -> ServerErrorKind {
@@ -439,8 +433,9 @@ impl QueryRespReader {
             } else if err_code == 12004 {
                 ServerErrorKind::IndexNotFound
             } else if err_code == 12009 {
-                if !error.reason.is_empty() {
-                    if let Some(code) = error.reason.get("code") {
+                let reason = error.reason.as_ref().and_then(Value::as_object);
+                if let Some(reason) = reason.filter(|reason| !reason.is_empty()) {
+                    if let Some(code) = reason.get("code") {
                         if code == 12033 {
                             ServerErrorKind::CasMismatch
                         } else if code == 17014 {
@@ -480,5 +475,177 @@ impl QueryRespReader {
         } else {
             ServerErrorKind::Unknown
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::QueryRespReader;
+    use crate::queryx::error::{ErrorKind, ServerErrorKind};
+    use crate::queryx::query_json::{QueryError, QueryMetaData};
+    use crate::queryx::query_result::{Status, TokenUsage};
+    use http::StatusCode;
+    use serde_json::json;
+
+    fn parse_errors(errors: serde_json::Value) -> crate::queryx::error::Error {
+        let errors: Vec<QueryError> = serde_json::from_value(errors).unwrap();
+        QueryRespReader::parse_errors(&errors, "endpoint", "statement", "ccid", StatusCode::OK)
+    }
+
+    #[test]
+    fn parse_errors_with_object_reason() {
+        let err = parse_errors(json!([{
+            "code": 12009,
+            "msg": "DML Error",
+            "reason": {"code": 12033, "msg": "cas mismatch"}
+        }]));
+
+        let ErrorKind::Server(server_error) = err.kind() else {
+            panic!("unexpected error: {err}");
+        };
+        assert_eq!(&ServerErrorKind::CasMismatch, server_error.kind());
+
+        let desc = &server_error.all_error_descs()[0];
+        assert_eq!(
+            Some(&json!({"code": 12033, "msg": "cas mismatch"})),
+            desc.reason()
+        );
+    }
+
+    #[test]
+    fn parse_errors_with_string_reason() {
+        let err = parse_errors(json!([{
+            "code": 19243,
+            "msg": "could not resume chat",
+            "reason": "chat not found"
+        }]));
+
+        let ErrorKind::Server(server_error) = err.kind() else {
+            panic!("unexpected error: {err}");
+        };
+        assert_eq!(19243, server_error.code());
+
+        let desc = &server_error.all_error_descs()[0];
+        assert_eq!(Some(&json!("chat not found")), desc.reason());
+    }
+
+    #[test]
+    fn parse_errors_without_reason() {
+        let err = parse_errors(json!([{"code": 3000, "msg": "syntax error"}]));
+
+        let ErrorKind::Server(server_error) = err.kind() else {
+            panic!("unexpected error: {err}");
+        };
+        let desc = &server_error.all_error_descs()[0];
+        assert_eq!(None, desc.reason());
+    }
+
+    async fn reader(body: serde_json::Value) -> QueryRespReader {
+        let resp = http::Response::builder()
+            .status(200)
+            .body(serde_json::to_vec(&body).unwrap())
+            .unwrap();
+        QueryRespReader::new(
+            reqwest::Response::from(resp).into(),
+            "endpoint",
+            "statement",
+            "ccid",
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn conversational_response_with_results() {
+        let mut reader = reader(json!({
+            "requestID": "req",
+            "generated_statement": "SELECT 1",
+            "results": [{"a": 1}],
+            "status": "success",
+            "requestTokens": {"promptTokens": 1, "completionTokens": 2, "totalTokens": 3},
+            "chatTokens": {"totalTokens": 30},
+            "metrics": {
+                "elapsedTime": "1s",
+                "naturalLanguageProcessingTime": "1.5s",
+                "generatedStatementExecuted": true
+            }
+        }))
+        .await;
+
+        // Available before any rows are read.
+        assert_eq!(
+            Some("SELECT 1"),
+            reader.early_metadata().generated_statement.as_deref()
+        );
+
+        let rows: Vec<_> = futures::StreamExt::collect(&mut reader).await;
+        assert_eq!(1, rows.len());
+
+        let meta = reader.metadata().unwrap();
+        assert_eq!(None, meta.chat_id);
+        assert_eq!(
+            Some(TokenUsage {
+                prompt_tokens: Some(1),
+                completion_tokens: Some(2),
+                total_tokens: Some(3),
+            }),
+            meta.request_tokens
+        );
+        assert_eq!(Some(30), meta.chat_tokens.as_ref().unwrap().total_tokens);
+        assert_eq!(None, meta.chat_tokens.as_ref().unwrap().prompt_tokens);
+
+        let metrics = meta.metrics.as_ref().unwrap();
+        assert_eq!(
+            Some(std::time::Duration::from_millis(1500)),
+            metrics.natural_language_processing_time
+        );
+        assert_eq!(Some(true), metrics.generated_statement_executed);
+    }
+
+    #[tokio::test]
+    async fn conversational_response_without_results_or_signature() {
+        let reader = reader(json!({
+            "requestID": "req",
+            "chatId": "chat-1",
+            "status": "success",
+            "metrics": {"elapsedTime": "1ms"}
+        }))
+        .await;
+
+        // No rows, so metadata is available immediately.
+        let meta = reader.metadata().unwrap();
+        assert_eq!(Some("chat-1"), meta.chat_id.as_deref());
+        assert!(meta.signature.is_none());
+        assert_eq!(None, meta.request_tokens);
+
+        let metrics = meta.metrics.as_ref().unwrap();
+        assert_eq!(None, metrics.natural_language_processing_time);
+        assert_eq!(None, metrics.generated_statement_executed);
+    }
+
+    #[tokio::test]
+    async fn generated_statement_without_execution() {
+        let reader = reader(json!({
+            "requestID": "req",
+            "generated_statement": "SELECT 2",
+            "status": "success"
+        }))
+        .await;
+
+        assert_eq!(
+            Some("SELECT 2"),
+            reader.early_metadata().generated_statement.as_deref()
+        );
+    }
+
+    #[test]
+    fn parse_metadata_with_unrecognized_status() {
+        let metadata: QueryMetaData = serde_json::from_value(json!({
+            "requestID": "abc",
+            "status": "somethingnew"
+        }))
+        .unwrap();
+
+        assert_eq!(Status::Unknown, metadata.status);
     }
 }

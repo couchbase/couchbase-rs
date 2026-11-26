@@ -35,6 +35,7 @@ pub enum Status {
     Closed,
     Fatal,
     Aborted,
+    #[serde(other)]
     Unknown,
 }
 
@@ -58,6 +59,7 @@ impl Display for Status {
 #[derive(Debug, Clone)]
 pub struct EarlyMetaData {
     pub prepared: Option<String>,
+    pub generated_statement: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +72,16 @@ pub struct MetaData {
     pub signature: Option<Box<RawValue>>,
     pub warnings: Vec<Warning>,
     pub profile: Option<Box<RawValue>>,
+    pub chat_id: Option<String>,
+    pub request_tokens: Option<TokenUsage>,
+    pub chat_tokens: Option<TokenUsage>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TokenUsage {
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
 }
 
 impl Display for MetaData {
@@ -111,6 +123,8 @@ pub struct Metrics {
     pub sort_count: u64,
     pub error_count: u64,
     pub warning_count: u64,
+    pub natural_language_processing_time: Option<Duration>,
+    pub generated_statement_executed: Option<bool>,
 }
 
 impl Display for Metrics {

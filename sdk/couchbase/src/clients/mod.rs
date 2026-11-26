@@ -22,6 +22,7 @@ pub mod bucket_mgmt_client;
 pub mod cluster_client;
 pub mod collection_client;
 pub mod collections_mgmt_client;
+pub mod conversational_query_client;
 pub mod core_kv_client;
 mod couchbase_core_kv_client;
 pub mod diagnostics_client;

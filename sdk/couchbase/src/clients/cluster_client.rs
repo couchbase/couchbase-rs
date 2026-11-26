@@ -22,6 +22,9 @@ use crate::clients::bucket_client::{
 use crate::clients::bucket_mgmt_client::{
     BucketMgmtClient, BucketMgmtClientBackend, CouchbaseBucketMgmtClient,
 };
+use crate::clients::conversational_query_client::{
+    ConversationalQueryClient, ConversationalQueryClientBackend, CouchbaseConversationalQueryClient,
+};
 use crate::clients::diagnostics_client::{
     CouchbaseDiagnosticsClient, DiagnosticsClient, DiagnosticsClientBackend,
 };
@@ -175,6 +178,21 @@ impl ClusterClient {
             ClusterClientBackend::Couchbase2ClusterBackend(_) => {
                 unimplemented!()
             }
+        }
+    }
+
+    pub fn conversational_query_client(&self) -> ConversationalQueryClient {
+        match &self.backend {
+            ClusterClientBackend::CouchbaseClusterBackend(backend) => {
+                ConversationalQueryClient::new(
+                    ConversationalQueryClientBackend::CouchbaseConversationalQueryClientBackend(
+                        backend.conversational_query_client(),
+                    ),
+                )
+            }
+            ClusterClientBackend::Couchbase2ClusterBackend(_) => ConversationalQueryClient::new(
+                ConversationalQueryClientBackend::Couchbase2ConversationalQueryClientBackend,
+            ),
         }
     }
 
@@ -352,6 +370,15 @@ impl CouchbaseClusterBackend {
         let agent = self.agent_manager.get_cluster_agent();
 
         CouchbaseQueryClient::new(
+            CouchbaseAgentProvider::with_agent(agent.clone()),
+            self.default_retry_strategy.clone(),
+        )
+    }
+
+    fn conversational_query_client(&self) -> CouchbaseConversationalQueryClient {
+        let agent = self.agent_manager.get_cluster_agent();
+
+        CouchbaseConversationalQueryClient::new(
             CouchbaseAgentProvider::with_agent(agent.clone()),
             self.default_retry_strategy.clone(),
         )

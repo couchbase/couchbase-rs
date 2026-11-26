@@ -20,7 +20,6 @@ use crate::httpx;
 use crate::tracingcomponent::MetricsName;
 use http::StatusCode;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
 
@@ -54,6 +53,45 @@ impl Error {
                 kind: Box::new(ErrorKind::Resource(e)),
             },
         }
+    }
+
+    pub(crate) fn from_server_error(e: ServerError) -> Error {
+        match e.kind() {
+            ServerErrorKind::ScopeNotFound
+            | ServerErrorKind::CollectionNotFound
+            | ServerErrorKind::IndexNotFound
+            | ServerErrorKind::IndexExists => Error::new_resource_error(ResourceError::new(e)),
+            ServerErrorKind::AuthenticationFailure if e.code() == 13014 => {
+                Error::new_resource_error(ResourceError::new(e))
+            }
+            _ => Error::new_server_error(e),
+        }
+    }
+
+    // This error with its code, message and kind taken from the first error description
+    // instead of the first non-retryable one, or `None` if they are the same.
+    pub(crate) fn with_first_error_chosen(&self) -> Option<Error> {
+        let e = match self.kind() {
+            ErrorKind::Server(e) => e,
+            ErrorKind::Resource(e) => e.cause(),
+            _ => return None,
+        };
+        let first = e.all_error_descs.first()?;
+        if e.all_error_descs
+            .iter()
+            .position(|d| !d.retry())
+            .unwrap_or(0)
+            == 0
+        {
+            return None;
+        }
+
+        let mut chosen = e.clone();
+        chosen.kind = first.kind.clone();
+        chosen.code = first.code;
+        chosen.msg = first.message.clone();
+        chosen.retry = first.retry;
+        Some(Error::from_server_error(chosen))
     }
 
     pub(crate) fn new_message_error(
@@ -549,7 +587,7 @@ pub struct ErrorDesc {
     code: u32,
     message: String,
     retry: bool,
-    reason: HashMap<String, Value>,
+    reason: Option<Value>,
 }
 
 impl ErrorDesc {
@@ -558,7 +596,7 @@ impl ErrorDesc {
         code: u32,
         message: String,
         retry: bool,
-        reason: HashMap<String, Value>,
+        reason: Option<Value>,
     ) -> Self {
         Self {
             kind,
@@ -585,8 +623,8 @@ impl ErrorDesc {
         self.retry
     }
 
-    pub fn reason(&self) -> &HashMap<String, Value> {
-        &self.reason
+    pub fn reason(&self) -> Option<&Value> {
+        self.reason.as_ref()
     }
 }
 

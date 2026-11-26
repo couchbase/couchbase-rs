@@ -1,6 +1,7 @@
 pub mod authenticator;
 pub mod bucket_management;
 mod collection_management;
+pub mod conversational_query;
 pub mod execution;
 pub mod helpers;
 pub mod kv;

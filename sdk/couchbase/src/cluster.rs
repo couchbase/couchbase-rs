@@ -26,10 +26,12 @@ use crate::authenticator::Authenticator;
 use crate::bucket::Bucket;
 use crate::clients::bucket_mgmt_client::BucketMgmtClient;
 use crate::clients::cluster_client::ClusterClient;
+use crate::clients::conversational_query_client::ConversationalQueryClient;
 use crate::clients::diagnostics_client::DiagnosticsClient;
 use crate::clients::query_client::QueryClient;
 use crate::clients::tracing_client::TracingClient;
 use crate::clients::user_mgmt_client::UserMgmtClient;
+use crate::conversational_query::ConversationalQuery;
 use crate::error;
 use crate::management::buckets::bucket_manager::BucketManager;
 use crate::management::users::user_manager::UserManager;
@@ -82,6 +84,7 @@ use tracing::Instrument;
 pub struct Cluster {
     client: Arc<ClusterClient>,
     query_client: Arc<QueryClient>,
+    conversational_query_client: Arc<ConversationalQueryClient>,
     bucket_mgmt_client: Arc<BucketMgmtClient>,
     user_mgmt_client: Arc<UserMgmtClient>,
     diagnostics_client: Arc<DiagnosticsClient>,
@@ -133,6 +136,7 @@ impl Cluster {
         let client = Arc::new(ClusterClient::connect(conn_str, opts).await?);
 
         let query_client = Arc::new(client.query_client());
+        let conversational_query_client = Arc::new(client.conversational_query_client());
         let bucket_mgmt_client = Arc::new(client.buckets_client());
         let user_mgmt_client = Arc::new(client.users_client());
         let diagnostics_client = Arc::new(client.diagnostics_client());
@@ -141,6 +145,7 @@ impl Cluster {
         Ok(Cluster {
             client,
             query_client,
+            conversational_query_client,
             bucket_mgmt_client,
             user_mgmt_client,
             diagnostics_client,
@@ -217,6 +222,17 @@ impl Cluster {
             .await;
         ctx.end_operation(result.as_ref().err());
         result
+    }
+
+    /// Returns the entry point for Conversational Query: natural-language prompts answered
+    /// by the Query service, as one-shot queries or multi-turn chats.
+    ///
+    /// See the [`conversational_query`](crate::conversational_query) module for an overview.
+    pub fn conversational_query(&self) -> ConversationalQuery {
+        ConversationalQuery::new(
+            self.conversational_query_client.clone(),
+            self.tracing_client.clone(),
+        )
     }
 
     /// Returns a [`BucketManager`]

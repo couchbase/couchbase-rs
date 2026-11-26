@@ -117,6 +117,8 @@ pub struct TerseNodeExtConfig {
     pub hostname: Option<String>,
     #[serde(alias = "alternateAddresses", default)]
     pub alternate_addresses: HashMap<String, TerseExtNodeAltAddresses>,
+    #[serde(alias = "nodeUUID", default)]
+    pub node_uuid: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

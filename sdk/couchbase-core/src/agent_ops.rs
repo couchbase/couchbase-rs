@@ -29,6 +29,10 @@ use crate::mgmtx::responses::{
 };
 use crate::mgmtx::user::{Group, RoleAndDescription, UserAndMetadata};
 use crate::options::analytics::{AnalyticsOptions, GetPendingMutationsOptions};
+use crate::options::conversational_query::{
+    AskChatOptions, BeginChatOptions, ChatState, ConversationalQueryOptions, EndChatOptions,
+    PauseChatOptions, ResumeChatOptions,
+};
 use crate::options::crud::{
     AddOptions, AppendOptions, DecrementOptions, DeleteOptions, GetAndLockOptions,
     GetAndTouchOptions, GetCollectionIdOptions, GetMetaOptions, GetOptions, GetReplicaOptions,
@@ -61,6 +65,7 @@ use crate::options::search_management::{
 };
 use crate::options::waituntilready::WaitUntilReadyOptions;
 use crate::queryx::index::Index;
+use crate::queryx::query_result::MetaData;
 use crate::results::analytics::AnalyticsResultStream;
 use crate::results::diagnostics::DiagnosticsResult;
 use crate::results::kv::{
@@ -516,6 +521,103 @@ impl Agent {
                 .await;
         }
         self.inner.query.prepared_query(opts).await
+    }
+
+    pub async fn conversational_query(
+        &self,
+        opts: ConversationalQueryOptions,
+    ) -> Result<QueryResultStream> {
+        #[cfg(feature = "top-level-spans")]
+        {
+            return self
+                .execute_observable_operation(
+                    Some(crate::tracingcomponent::SERVICE_VALUE_QUERY),
+                    Keyspace::Cluster,
+                    create_span!("conversational_query"),
+                    || self.inner.query.conversational_query(opts),
+                )
+                .await;
+        }
+        self.inner.query.conversational_query(opts).await
+    }
+
+    pub async fn begin_chat(&self, opts: BeginChatOptions) -> Result<ChatState> {
+        #[cfg(feature = "top-level-spans")]
+        {
+            return self
+                .execute_observable_operation(
+                    Some(crate::tracingcomponent::SERVICE_VALUE_QUERY),
+                    Keyspace::Cluster,
+                    create_span!("conversational_query_begin_chat"),
+                    || self.inner.query.begin_chat(opts),
+                )
+                .await;
+        }
+        self.inner.query.begin_chat(opts).await
+    }
+
+    pub async fn ask_chat(
+        &self,
+        chat: &ChatState,
+        opts: AskChatOptions,
+    ) -> Result<QueryResultStream> {
+        #[cfg(feature = "top-level-spans")]
+        {
+            return self
+                .execute_observable_operation(
+                    Some(crate::tracingcomponent::SERVICE_VALUE_QUERY),
+                    Keyspace::Cluster,
+                    create_span!("conversational_query_ask"),
+                    || self.inner.query.ask_chat(chat, opts),
+                )
+                .await;
+        }
+        self.inner.query.ask_chat(chat, opts).await
+    }
+
+    pub async fn pause_chat(&self, chat: &ChatState, opts: PauseChatOptions) -> Result<MetaData> {
+        #[cfg(feature = "top-level-spans")]
+        {
+            return self
+                .execute_observable_operation(
+                    Some(crate::tracingcomponent::SERVICE_VALUE_QUERY),
+                    Keyspace::Cluster,
+                    create_span!("conversational_query_pause"),
+                    || self.inner.query.pause_chat(chat, opts),
+                )
+                .await;
+        }
+        self.inner.query.pause_chat(chat, opts).await
+    }
+
+    pub async fn resume_chat(&self, chat: &ChatState, opts: ResumeChatOptions) -> Result<MetaData> {
+        #[cfg(feature = "top-level-spans")]
+        {
+            return self
+                .execute_observable_operation(
+                    Some(crate::tracingcomponent::SERVICE_VALUE_QUERY),
+                    Keyspace::Cluster,
+                    create_span!("conversational_query_resume"),
+                    || self.inner.query.resume_chat(chat, opts),
+                )
+                .await;
+        }
+        self.inner.query.resume_chat(chat, opts).await
+    }
+
+    pub async fn end_chat(&self, chat: &ChatState, opts: EndChatOptions) -> Result<MetaData> {
+        #[cfg(feature = "top-level-spans")]
+        {
+            return self
+                .execute_observable_operation(
+                    Some(crate::tracingcomponent::SERVICE_VALUE_QUERY),
+                    Keyspace::Cluster,
+                    create_span!("conversational_query_end"),
+                    || self.inner.query.end_chat(chat, opts),
+                )
+                .await;
+        }
+        self.inner.query.end_chat(chat, opts).await
     }
 
     pub async fn get_all_indexes(&self, opts: &GetAllIndexesOptions<'_>) -> Result<Vec<Index>> {

@@ -10,8 +10,10 @@ use couchbase::options::query_options::ScanConsistency::{NotBounded, RequestPlus
 use couchbase::options::query_options::{QueryOptions, ReplicaLevel};
 use couchbase::results::query_results::{QueryMetrics, QueryStatus, QueryWarning};
 use couchbase::scope::Scope;
+use futures::stream::BoxStream;
 use log::info;
 use prost_types::Timestamp;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::time::Duration;
 use tonic::codegen::tokio_stream::StreamExt;
@@ -119,105 +121,9 @@ impl QueryCommand {
         content_as: Option<&As>,
         res: &mut couchbase::results::query_results::QueryResult,
     ) -> Result<sdk::Result> {
-        let content: Vec<ContentTypes> = match content_as {
-            Some(As::AsString(_)) => {
-                let mut content = vec![];
-                let mut rows = res.rows::<String>();
-                while let Some(row) = rows.next().await {
-                    match row {
-                        Ok(parsed) => content.push(ContentTypes {
-                            content: Some(shared::content_types::Content::ContentAsString(parsed)),
-                        }),
-                        Err(err) => return Ok(sdk_error_to_proto_sdk_result(err)),
-                    }
-                }
-                content
-            }
-            Some(As::AsByteArray(_)) => {
-                let mut content = vec![];
-                let mut rows = res.rows::<Vec<u8>>();
-                while let Some(row) = rows.next().await {
-                    match row {
-                        Ok(parsed) => content.push(ContentTypes {
-                            content: Some(shared::content_types::Content::ContentAsBytes(parsed)),
-                        }),
-                        Err(err) => return Ok(sdk_error_to_proto_sdk_result(err)),
-                    }
-                }
-                content
-            }
-            Some(As::AsJsonObject(_)) | Some(As::AsJsonArray(_)) => {
-                let mut content = vec![];
-                let mut rows = res.rows::<Value>();
-                while let Some(row) = rows.next().await {
-                    match row {
-                        Ok(parsed) => {
-                            let bytes = serde_json::to_vec(&parsed).map_err(|e| {
-                                Error::internal(format!("Failed to serialize JSON value: {e}"))
-                            })?;
-                            content.push(ContentTypes {
-                                content: Some(shared::content_types::Content::ContentAsBytes(
-                                    bytes,
-                                )),
-                            });
-                        }
-                        Err(err) => return Ok(sdk_error_to_proto_sdk_result(err)),
-                    }
-                }
-                content
-            }
-            Some(As::AsBoolean(_)) => {
-                let mut content = vec![];
-                let mut rows = res.rows::<bool>();
-                while let Some(row) = rows.next().await {
-                    match row {
-                        Ok(parsed) => content.push(ContentTypes {
-                            content: Some(shared::content_types::Content::ContentAsBool(parsed)),
-                        }),
-                        Err(err) => return Ok(sdk_error_to_proto_sdk_result(err)),
-                    }
-                }
-                content
-            }
-            Some(As::AsInteger(_)) => {
-                let mut content = vec![];
-                let mut rows = res.rows::<i64>();
-                while let Some(row) = rows.next().await {
-                    match row {
-                        Ok(parsed) => content.push(ContentTypes {
-                            content: Some(shared::content_types::Content::ContentAsInt64(parsed)),
-                        }),
-                        Err(err) => return Ok(sdk_error_to_proto_sdk_result(err)),
-                    }
-                }
-                content
-            }
-            Some(As::AsFloatingPoint(_)) => {
-                let mut content = vec![];
-                let mut rows = res.rows::<f64>();
-                while let Some(row) = rows.next().await {
-                    match row {
-                        Ok(parsed) => content.push(ContentTypes {
-                            content: Some(shared::content_types::Content::ContentAsDouble(parsed)),
-                        }),
-                        Err(err) => return Ok(sdk_error_to_proto_sdk_result(err)),
-                    }
-                }
-                content
-            }
-            None => {
-                let mut content = vec![];
-                let mut rows = res.rows::<Vec<u8>>();
-                while let Some(row) = rows.next().await {
-                    match row {
-                        Ok(parsed) => content.push(ContentTypes {
-                            content: Some(shared::content_types::Content::ContentAsBytes(parsed)),
-                        }),
-                        Err(err) => return Ok(sdk_error_to_proto_sdk_result(err)),
-                    }
-                }
-                content
-            }
+        let content = match read_rows(content_as, res).await? {
+            Ok(content) => content,
+            Err(err) => return Ok(sdk_error_to_proto_sdk_result(err)),
         };
 
         let meta_data = match res.metadata() {
@@ -232,6 +138,76 @@ impl QueryCommand {
             })),
         })
     }
+}
+
+/// A query result whose rows can be read as any deserializable type.
+pub(crate) trait RowSource {
+    fn typed_rows<'a, V: DeserializeOwned + Send + Sync + 'a>(
+        &'a mut self,
+    ) -> BoxStream<'a, couchbase::error::Result<V>>;
+}
+
+impl RowSource for couchbase::results::query_results::QueryResult {
+    fn typed_rows<'a, V: DeserializeOwned + Send + Sync + 'a>(
+        &'a mut self,
+    ) -> BoxStream<'a, couchbase::error::Result<V>> {
+        Box::pin(self.rows::<V>())
+    }
+}
+
+impl RowSource for couchbase::results::conversational_query_results::ConversationalResult {
+    fn typed_rows<'a, V: DeserializeOwned + Send + Sync + 'a>(
+        &'a mut self,
+    ) -> BoxStream<'a, couchbase::error::Result<V>> {
+        Box::pin(self.rows::<V>())
+    }
+}
+
+/// Reads every row as `content_as`. The inner error is an SDK error to report to the driver.
+pub(crate) async fn read_rows<R: RowSource>(
+    content_as: Option<&As>,
+    res: &mut R,
+) -> Result<std::result::Result<Vec<ContentTypes>, couchbase::error::Error>> {
+    use shared::content_types::Content;
+
+    match content_as {
+        Some(As::AsString(_)) => {
+            collect_rows(res, |v: String| Ok(Content::ContentAsString(v))).await
+        }
+        Some(As::AsByteArray(_)) | None => {
+            collect_rows(res, |v: Vec<u8>| Ok(Content::ContentAsBytes(v))).await
+        }
+        Some(As::AsJsonObject(_)) | Some(As::AsJsonArray(_)) => {
+            collect_rows(res, |v: Value| {
+                serde_json::to_vec(&v)
+                    .map(Content::ContentAsBytes)
+                    .map_err(|e| Error::internal(format!("Failed to serialize JSON value: {e}")))
+            })
+            .await
+        }
+        Some(As::AsBoolean(_)) => collect_rows(res, |v: bool| Ok(Content::ContentAsBool(v))).await,
+        Some(As::AsInteger(_)) => collect_rows(res, |v: i64| Ok(Content::ContentAsInt64(v))).await,
+        Some(As::AsFloatingPoint(_)) => {
+            collect_rows(res, |v: f64| Ok(Content::ContentAsDouble(v))).await
+        }
+    }
+}
+
+async fn collect_rows<R: RowSource, V: DeserializeOwned + Send + Sync>(
+    res: &mut R,
+    to_content: impl Fn(V) -> Result<shared::content_types::Content>,
+) -> Result<std::result::Result<Vec<ContentTypes>, couchbase::error::Error>> {
+    let mut content = vec![];
+    let mut rows = res.typed_rows::<V>();
+    while let Some(row) = rows.next().await {
+        match row {
+            Ok(parsed) => content.push(ContentTypes {
+                content: Some(to_content(parsed)?),
+            }),
+            Err(err) => return Ok(Err(err)),
+        }
+    }
+    Ok(Ok(content))
 }
 
 // Request conversions

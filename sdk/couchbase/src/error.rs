@@ -22,8 +22,8 @@
 //! Use [`Error::kind()`] to inspect the [`ErrorKind`] and determine the failure category.
 
 use crate::error_context::{
-    ErrorContext, ExtendedErrorContext, HttpErrorContext, KeyValueErrorContext, QueryErrorContext,
-    QueryErrorDesc, SearchErrorContext,
+    ChatErrorContext, ErrorContext, ExtendedErrorContext, HttpErrorContext, KeyValueErrorContext,
+    QueryErrorContext, QueryErrorDesc, SearchErrorContext,
 };
 use crate::service_type::ServiceType;
 use couchbase_core::memdx::error::{ServerError, ServerErrorKind, SubdocError, SubdocErrorKind};
@@ -98,6 +98,38 @@ impl Error {
             msg: msg.into(),
             arg: Some(arg.into()),
         }))
+    }
+
+    pub(crate) fn with_kind(mut self, kind: ErrorKind) -> Self {
+        self.kind = Box::new(kind);
+        self
+    }
+
+    pub(crate) fn chat_currently_unavailable(
+        chat_id: impl Into<String>,
+        owner: Option<String>,
+        operation: &'static str,
+        source: Option<&Error>,
+    ) -> Self {
+        let source_context = source.and_then(|e| e.context.as_ref().as_ref());
+        let query = source_context.and_then(|c| match c.extended_context() {
+            Some(ExtendedErrorContext::Query(q)) => Some(q.clone()),
+            _ => None,
+        });
+
+        let mut context = ErrorContext::new().with_extended_context(ExtendedErrorContext::Chat(
+            ChatErrorContext {
+                chat_id: chat_id.into(),
+                owner,
+                operation,
+                query,
+            },
+        ));
+        if let Some(dispatched_to) = source_context.and_then(|c| c.last_dispatched_to()) {
+            context = context.with_dispatched_to(dispatched_to.clone());
+        }
+
+        Self::new(ErrorKind::ConversationalChatCurrentlyUnavailable).with_context(context)
     }
 
     pub(crate) fn with_context(mut self, context: ErrorContext) -> Self {
@@ -177,7 +209,10 @@ impl Error {
                     code: ed.code(),
                     message: ed.message().to_string(),
                     retry: ed.retry(),
-                    reason: ed.reason().clone(),
+                    reason: ed
+                        .reason()
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::Value::Object(Default::default())),
                 })
                 .collect(),
         };
@@ -265,7 +300,8 @@ pub enum ErrorKind {
     QuotaLimitedFailure,
     /// The request was canceled before completion.
     RequestCanceled,
-
+    /// The chat could not be reached; [`ConversationalQueryChat::resume`](crate::conversational_query::ConversationalQueryChat::resume) may recover it.
+    ConversationalChatCurrentlyUnavailable,
     // Key Value Error Definitions RFC#58@16
     /// The document was not found in the collection.
     DocumentNotFound,
@@ -414,6 +450,7 @@ impl Display for ErrorKind {
             ErrorKind::RateLimitedFailure => "rate limited failure",
             ErrorKind::QuotaLimitedFailure => "quota limited failure",
             ErrorKind::RequestCanceled => "request canceled",
+            ErrorKind::ConversationalChatCurrentlyUnavailable => "chat currently unavailable",
             ErrorKind::DocumentNotFound => "document not found",
             ErrorKind::DocumentNotFoundOnReplica => "document not found on replica",
             ErrorKind::DocumentUnretrievable => "document unretrievable",
@@ -490,6 +527,9 @@ impl MetricsName for ErrorKind {
             ErrorKind::RateLimitedFailure => "RateLimited",
             ErrorKind::QuotaLimitedFailure => "QuotaLimited",
             ErrorKind::RequestCanceled => "RequestCanceled",
+            ErrorKind::ConversationalChatCurrentlyUnavailable => {
+                "ConversationalChatCurrentlyUnavailable"
+            }
             ErrorKind::DocumentNotFound => "DocumentNotFound",
             ErrorKind::DocumentNotFoundOnReplica => "DocumentNotFoundOnReplica",
             ErrorKind::DocumentUnretrievable => "DocumentUnretrievable",
@@ -698,6 +738,21 @@ impl From<couchbase_core::error::Error> for Error {
                 kind: Box::new(ErrorKind::OtherFailure(msg.to_string())),
                 context: Box::new(None),
             },
+            couchbase_core::error::ErrorKind::ConversationalChatCurrentlyUnavailable {
+                chat_id,
+                owner,
+                operation,
+                source,
+                ..
+            } => {
+                let source = source.clone().map(Error::from);
+                Error::chat_currently_unavailable(
+                    chat_id.clone(),
+                    owner.clone(),
+                    operation,
+                    source.as_ref(),
+                )
+            }
             couchbase_core::error::ErrorKind::ServiceNotAvailable { service, .. } => Error {
                 kind: Box::new(ErrorKind::ServiceNotAvailable(ServiceType::from(service))),
                 context: Box::new(None),

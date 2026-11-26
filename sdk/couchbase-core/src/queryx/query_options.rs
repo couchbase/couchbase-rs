@@ -141,6 +141,89 @@ impl Serialize for ScanVectorEntry {
     }
 }
 
+#[derive(Clone, Default, PartialEq)]
+#[non_exhaustive]
+pub struct NaturalLanguageOptions {
+    pub(crate) cred: Option<String>,
+    pub(crate) org_id: Option<String>,
+    pub(crate) vendor: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) config: Option<serde_json::Map<String, Value>>,
+    pub(crate) chat_id: Option<String>,
+}
+
+impl NaturalLanguageOptions {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn cred(mut self, cred: impl Into<Option<String>>) -> Self {
+        self.cred = cred.into();
+        self
+    }
+
+    pub fn org_id(mut self, org_id: impl Into<Option<String>>) -> Self {
+        self.org_id = org_id.into();
+        self
+    }
+
+    pub fn vendor(mut self, vendor: impl Into<Option<String>>) -> Self {
+        self.vendor = vendor.into();
+        self
+    }
+
+    pub fn model(mut self, model: impl Into<Option<String>>) -> Self {
+        self.model = model.into();
+        self
+    }
+
+    pub fn config(mut self, config: impl Into<Option<serde_json::Map<String, Value>>>) -> Self {
+        self.config = config.into();
+        self
+    }
+
+    pub fn chat_id(mut self, chat_id: impl Into<Option<String>>) -> Self {
+        self.chat_id = chat_id.into();
+        self
+    }
+
+    fn serialize_into<M: SerializeMap>(&self, map: &mut M) -> Result<(), M::Error> {
+        if let Some(cred) = &self.cred {
+            map.serialize_entry("natural_cred", cred)?;
+        }
+        if let Some(org_id) = &self.org_id {
+            map.serialize_entry("natural_orgid", org_id)?;
+        }
+        if let Some(vendor) = &self.vendor {
+            map.serialize_entry("natural_vendor", vendor)?;
+        }
+        if let Some(model) = &self.model {
+            map.serialize_entry("natural_model", model)?;
+        }
+        if let Some(config) = self.config.as_ref().filter(|config| !config.is_empty()) {
+            map.serialize_entry("natural_config", config)?;
+        }
+        if let Some(chat_id) = &self.chat_id {
+            map.serialize_entry("natural_chatid", chat_id)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Debug for NaturalLanguageOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const REDACTED: &str = "<redacted>";
+        f.debug_struct("NaturalLanguageOptions")
+            .field("cred", &self.cred.as_ref().map(|_| REDACTED))
+            .field("org_id", &self.org_id)
+            .field("vendor", &self.vendor)
+            .field("model", &self.model)
+            .field("config", &self.config.as_ref().map(|_| REDACTED))
+            .field("chat_id", &self.chat_id)
+            .finish()
+    }
+}
+
 pub type FullScanVectors = Vec<ScanVectorEntry>;
 pub type SparseScanVectors = HashMap<String, ScanVectorEntry>;
 
@@ -193,6 +276,7 @@ pub struct QueryOptions {
 
     pub(crate) named_args: Option<HashMap<String, Value>>,
     pub(crate) raw: Option<HashMap<String, Value>>,
+    pub(crate) natural_language: Option<NaturalLanguageOptions>,
 
     pub(crate) on_behalf_of: Option<OnBehalfOfInfo>,
 }
@@ -445,6 +529,14 @@ impl QueryOptions {
         self
     }
 
+    pub fn natural_language(
+        mut self,
+        natural_language: impl Into<Option<NaturalLanguageOptions>>,
+    ) -> Self {
+        self.natural_language = natural_language.into();
+        self
+    }
+
     pub fn on_behalf_of(mut self, on_behalf_of: impl Into<Option<OnBehalfOfInfo>>) -> Self {
         self.on_behalf_of = on_behalf_of.into();
         self
@@ -530,6 +622,10 @@ impl Serialize for QueryOptions {
                 };
                 map.serialize_entry(key, value)?;
             }
+        }
+
+        if let Some(natural_language) = &self.natural_language {
+            natural_language.serialize_into(&mut map)?;
         }
 
         if let Some(raw) = &self.raw {
@@ -899,5 +995,89 @@ impl<'a> PingOptions<'a> {
     pub fn on_behalf_of(mut self, on_behalf_of: impl Into<Option<&'a OnBehalfOfInfo>>) -> Self {
         self.on_behalf_of = on_behalf_of.into();
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{NaturalLanguageOptions, QueryOptions};
+    use serde_json::{json, Map, Value};
+    use std::collections::HashMap;
+
+    fn config() -> Map<String, Value> {
+        let mut config = Map::new();
+        config.insert("api_key".into(), json!("sk-secret"));
+        config.insert("model".into(), json!("gpt"));
+        config
+    }
+
+    #[test]
+    fn natural_language_options_serialize_to_top_level_params() {
+        let opts = QueryOptions::new()
+            .statement("USING AI WITH {} hello".to_string())
+            .natural_language(
+                NaturalLanguageOptions::new()
+                    .cred("me@example.com:hunter2".to_string())
+                    .org_id("org".to_string())
+                    .vendor("openai".to_string())
+                    .model("gpt".to_string())
+                    .config(config())
+                    .chat_id("chat-1".to_string()),
+            );
+
+        assert_eq!(
+            json!({
+                "statement": "USING AI WITH {} hello",
+                "natural_cred": "me@example.com:hunter2",
+                "natural_orgid": "org",
+                "natural_vendor": "openai",
+                "natural_model": "gpt",
+                "natural_config": {"api_key": "sk-secret", "model": "gpt"},
+                "natural_chatid": "chat-1",
+            }),
+            serde_json::to_value(&opts).unwrap()
+        );
+    }
+
+    #[test]
+    fn empty_natural_config_is_omitted() {
+        let opts =
+            QueryOptions::new().natural_language(NaturalLanguageOptions::new().config(Map::new()));
+        assert_eq!(json!({}), serde_json::to_value(&opts).unwrap());
+    }
+
+    #[test]
+    fn raw_params_take_precedence_over_natural_language_options() {
+        let opts = QueryOptions::new()
+            .natural_language(NaturalLanguageOptions::new().chat_id("typed".to_string()))
+            .raw(HashMap::from([(
+                "natural_chatid".to_string(),
+                json!("raw"),
+            )]));
+        assert_eq!(
+            json!({"natural_chatid": "raw"}),
+            serde_json::to_value(&opts).unwrap()
+        );
+    }
+
+    #[test]
+    fn debug_redacts_model_credentials() {
+        let opts = QueryOptions::new().natural_language(
+            NaturalLanguageOptions::new()
+                .cred("me@example.com:hunter2".to_string())
+                .config(config())
+                .chat_id("chat-1".to_string()),
+        );
+
+        let debug = format!("{opts:?}");
+        assert!(!debug.contains("hunter2"), "{debug}");
+        assert!(!debug.contains("sk-secret"), "{debug}");
+        assert!(debug.contains("<redacted>"), "{debug}");
+        assert!(debug.contains("chat-1"), "{debug}");
+
+        let core_opts = crate::options::query::QueryOptions::new().natural_language(
+            NaturalLanguageOptions::new().cred("me@example.com:hunter2".to_string()),
+        );
+        assert!(!format!("{core_opts:?}").contains("hunter2"));
     }
 }

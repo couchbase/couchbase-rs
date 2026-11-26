@@ -76,9 +76,12 @@ pub struct QueryOptions {
 
     pub named_args: Option<HashMap<String, Value>>,
     pub raw: Option<HashMap<String, Value>>,
+    pub natural_language: Option<queryx::query_options::NaturalLanguageOptions>,
 
     pub on_behalf_of: Option<OnBehalfOfInfo>,
-    pub endpoint: Option<String>,
+    pub idempotent: Option<bool>, // Defaults to the value of read_only.
+    // The query node to send the request to. `None` means an endpoint is selected at random.
+    pub node_uuid: Option<String>,
     pub retry_strategy: Arc<dyn RetryStrategy>,
 }
 
@@ -130,8 +133,10 @@ impl Default for QueryOptions {
             use_replica: None,
             named_args: None,
             raw: None,
+            natural_language: None,
             on_behalf_of: None,
-            endpoint: None,
+            idempotent: None,
+            node_uuid: None,
             retry_strategy: DEFAULT_RETRY_STRATEGY.clone(),
         }
     }
@@ -410,9 +415,27 @@ impl QueryOptions {
         self
     }
 
-    pub fn endpoint(mut self, endpoint: impl Into<Option<String>>) -> Self {
-        self.endpoint = endpoint.into();
+    pub fn node_uuid(mut self, node_uuid: impl Into<Option<String>>) -> Self {
+        self.node_uuid = node_uuid.into();
         self
+    }
+
+    pub fn natural_language(
+        mut self,
+        natural_language: impl Into<Option<queryx::query_options::NaturalLanguageOptions>>,
+    ) -> Self {
+        self.natural_language = natural_language.into();
+        self
+    }
+
+    pub fn idempotent(mut self, idempotent: impl Into<Option<bool>>) -> Self {
+        self.idempotent = idempotent.into();
+        self
+    }
+
+    pub(crate) fn is_idempotent(&self) -> bool {
+        self.idempotent
+            .unwrap_or_else(|| self.read_only.unwrap_or_default())
     }
 }
 
@@ -465,6 +488,7 @@ impl From<QueryOptions> for queryx::query_options::QueryOptions {
 
             named_args: opts.named_args,
             raw: opts.raw,
+            natural_language: opts.natural_language,
 
             on_behalf_of: opts.on_behalf_of,
         }

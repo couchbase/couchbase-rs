@@ -18,6 +18,7 @@
 
 pub mod agent;
 pub mod analytics;
+pub mod conversational_query;
 pub mod crud;
 pub mod diagnostics;
 pub mod management;
